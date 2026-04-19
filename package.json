@@ -1,0 +1,18 @@
+{
+  "name": "repo-parking",
+  "version": "1.0.0",
+  "description": "Park and unpark git repos to save disk space",
+  "bin": {
+    "parking": "./bin/parking.js"
+  },
+  "main": "bin/parking.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "latest",
+    "inquirer": "^8.0.0",
+    "simple-git": "latest"
+  },
+  "license": "MIT"
+}
