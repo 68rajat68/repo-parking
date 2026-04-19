@@ -98,28 +98,38 @@ async function initCommand() {
     throw cloneErr;
   }
 
-  // P2-z fix: after re-clone, switch to the configured vaultBranch
-  // Try detected branch first, then fallback to 'main', then 'master'
-  let checkoutSuccess = false;
-  for (const branch of [vaultBranch, 'main', 'master']) {
-    try {
-      await simpleGit(vaultPath).checkout([branch]);
-      vaultBranch = branch;
-      checkoutSuccess = true;
-      break;
-    } catch (err) {
-      // Try next branch
-    }
+  // Check if repo has any commits (empty repo = unborn HEAD)
+  let isEmptyRepo = false;
+  try {
+    const commitCount = await simpleGit(vaultPath).raw(['rev-list', '--count', 'HEAD']);
+    isEmptyRepo = commitCount === '0' || commitCount === '';
+  } catch (err) {
+    isEmptyRepo = true; // If we can't get commit count, assume empty
   }
 
-  if (!checkoutSuccess) {
-    console.error('\n\x1b[31mERROR: Could not checkout any branch.\x1b[0m');
-    console.error('The cloned repository appears empty or has an unusual branch structure.');
-    console.error('Make sure your vault repository has at least one commit.');
-    // Cleanup the failed clone
-    fs.rmSync(vaultPath, { recursive: true, force: true });
-    return;
+  // P2-z fix: for empty repos, skip checkout - HEAD is already on the right branch
+  // For repos with commits, try to checkout the detected/default branch
+  if (!isEmptyRepo) {
+    let checkoutSuccess = false;
+    for (const branch of [vaultBranch, 'main', 'master']) {
+      try {
+        await simpleGit(vaultPath).checkout([branch]);
+        vaultBranch = branch;
+        checkoutSuccess = true;
+        break;
+      } catch (err) {
+        // Try next branch
+      }
+    }
+
+    if (!checkoutSuccess) {
+      console.error('\n\x1b[31mERROR: Could not checkout any branch.\x1b[0m');
+      console.error('Make sure your vault repository has at least one commit.');
+      fs.rmSync(vaultPath, { recursive: true, force: true });
+      return;
+    }
   }
+  // For empty repos, HEAD is on unborn branch - we proceed to create files and bootstrap
 
   // Create projects directory and meta.json if needed
   const projectsDir = path.join(vaultPath, 'projects');
@@ -145,7 +155,7 @@ async function initCommand() {
 
     // P1-u fix: check isFirstCommit for rollback
     try {
-      const commitCount = await git.revList(['--count', 'HEAD']);
+      const commitCount = await git.raw(['rev-list', '--count', 'HEAD']);
       const isFirstCommit = commitCount === '1';
 
       try {
