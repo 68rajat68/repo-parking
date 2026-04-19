@@ -95,4 +95,14 @@ program
     unparkCommand(nameOrLetter);
   });
 
-program.parse(process.argv);
+try {
+  program.parse(process.argv);
+} catch (err) {
+  if (err.code === 'commander.version') {
+    process.exit(0);
+  }
+  if (err.code === 'commander.helpDisplayed') {
+    process.exit(0);
+  }
+  throw err;
+}
