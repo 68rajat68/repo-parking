@@ -81,13 +81,45 @@ async function initCommand() {
       vaultBranch = match[1];
     }
   } catch (err) {
-    // Fall back to 'main'
+    // Fall back to 'main' if detection fails
   }
 
-  await simpleGit().clone(vaultRemote, vaultPath);
+  try {
+    await simpleGit().clone(vaultRemote, vaultPath);
+  } catch (cloneErr) {
+    if (cloneErr.message && cloneErr.message.includes('Repository not found')) {
+      console.error('\n\x1b[31mERROR: Repository not found.\x1b[0m');
+      console.error('Make sure:');
+      console.error('  1. The vault repository exists and is accessible');
+      console.error('  2. You have proper SSH access (run: ssh -T git@github.com)');
+      console.error('  3. If using SSH alias, use the full URL like git@github-68rajat68:user/repo.git');
+      return;
+    }
+    throw cloneErr;
+  }
 
   // P2-z fix: after re-clone, switch to the configured vaultBranch
-  await simpleGit(vaultPath).checkout([vaultBranch]);
+  // Try detected branch first, then fallback to 'main', then 'master'
+  let checkoutSuccess = false;
+  for (const branch of [vaultBranch, 'main', 'master']) {
+    try {
+      await simpleGit(vaultPath).checkout([branch]);
+      vaultBranch = branch;
+      checkoutSuccess = true;
+      break;
+    } catch (err) {
+      // Try next branch
+    }
+  }
+
+  if (!checkoutSuccess) {
+    console.error('\n\x1b[31mERROR: Could not checkout any branch.\x1b[0m');
+    console.error('The cloned repository appears empty or has an unusual branch structure.');
+    console.error('Make sure your vault repository has at least one commit.');
+    // Cleanup the failed clone
+    fs.rmSync(vaultPath, { recursive: true, force: true });
+    return;
+  }
 
   // Create projects directory and meta.json if needed
   const projectsDir = path.join(vaultPath, 'projects');
