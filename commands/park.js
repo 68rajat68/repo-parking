@@ -43,12 +43,12 @@ async function parkCommand(name) {
     return;
   }
 
-  const repoRoot = getRepoRoot();
+  const repoRoot = await getRepoRoot();
 
   // STEP 2 — RESOLVE CLONEABLE REMOTE
   let upstreamInfo;
   try {
-    upstreamInfo = getUpstreamInfo();
+    upstreamInfo = await getUpstreamInfo(repoRoot);
   } catch (err) {
     console.error(err.message);
     return;
@@ -396,7 +396,7 @@ async function parkCommand(name) {
   const git = simpleGit(repoRoot);
   let parkedBranch;
   try {
-    parkedBranch = git.symbolicRef(['--short', 'HEAD']).trim();
+    parkedBranch = (await git.raw(['symbolic-ref', '--short', 'HEAD'])).trim();
   } catch (err) {
     parkedBranch = null;
   }
@@ -406,7 +406,9 @@ async function parkCommand(name) {
   const allProjectFiles = listProjects();
   const activeIds = allProjectFiles.map(p => p.id);
   const allUsedIds = [...meta.retiredIds, ...activeIds];
-  const id = existingProject ? existingProject.id : getNextLetter(allUsedIds);
+  // Only reuse existing ID if overwriting (duplicateChoice === 'overwrite')
+  // For [N] new entry or first park, always get a new letter
+  const id = (duplicateChoice === 'overwrite' && existingProject) ? existingProject.id : getNextLetter(allUsedIds);
 
   // Build project JSON
   const projectData = {
@@ -425,10 +427,37 @@ async function parkCommand(name) {
     parked_at: new Date().toISOString()
   };
 
-  // Save project
-  saveProject(id, projectData);
+  // STEP 8 — DELETE CONFIRMATION FIRST (before vault push)
+  console.log('');
+  console.log('This will permanently delete ' + repoRoot + '.');
 
-  // Push to vault
+  const { confirmDelete } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'confirmDelete',
+      message: 'Type "' + projectName + '" to confirm deletion:'
+    }
+  ]);
+
+  if (confirmDelete !== projectName) {
+    console.log('Cancelled. Nothing was pushed to vault.');
+    // Rollback: remove the saved project file if it exists (in case of overwrite)
+    if (existingProject) {
+      // Restore the original project data
+      saveProject(existingProject.id, existingProject);
+    } else {
+      // Just delete the newly created project file
+      const projectsDir = require('../lib/vault').vaultPath + '/projects';
+      const projectFile = path.join(projectsDir, id + '.json');
+      if (fs.existsSync(projectFile)) {
+        fs.unlinkSync(projectFile);
+      }
+    }
+    return;
+  }
+
+  // Only push to vault AFTER successful confirmation
+  saveProject(id, projectData);
   console.log('Pushing to vault...');
   const pushResult = await pushVault('park: add project ' + projectName);
 
@@ -437,23 +466,7 @@ async function parkCommand(name) {
     return;
   }
 
-  // STEP 8 — DELETE
-  console.log('');
-  console.log('This will permanently delete ' + repoRoot + '.');
-
-  const { confirmDelete } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'confirmDelete',
-      message: 'Type the project name to confirm:'
-    }
-  ]);
-
-  if (confirmDelete !== projectName) {
-    console.log('Cancelled.');
-    return;
-  }
-
+  // Now safe to delete local folder
   fs.rmSync(repoRoot, { recursive: true, force: true });
   console.log('Parked as [' + id + ']. Use parking unpark ' + id + ' to restore.');
 }
@@ -463,10 +476,17 @@ async function askConfigQuestions() {
     {
       type: 'input',
       name: 'setupCmd',
-      message: 'Setup command? (e.g. npm install, pip install -r requirements.txt, yarn)',
+      message: 'Setup command? (e.g. npm install && npm run dev, or pip install -r requirements.txt)',
       default: ''
     }
   ]);
+
+  // Validate setup command - warn if comma is used (common mistake)
+  if (setupCmd && setupCmd.includes(',')) {
+    console.log('\x1b[33m⚠ Note: Use "&&" or ";" to separate commands, not comma.\x1b[0m');
+    console.log('  Your input: ' + setupCmd);
+    console.log('  Comma will be treated as part of the command and may cause errors.');
+  }
 
   const { extraFilesInput } = await inquirer.prompt([
     {

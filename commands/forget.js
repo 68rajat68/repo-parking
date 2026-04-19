@@ -35,7 +35,7 @@ async function forgetCommand(nameOrLetter) {
     {
       type: 'input',
       name: 'confirmName',
-      message: 'Type the project name to confirm:',
+      message: 'Type "' + project.name + '" to confirm:',
       validate: (input) => {
         if (input !== project.name) {
           return 'Cancelled.';
