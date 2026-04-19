@@ -9,6 +9,7 @@ const { parseSshConfig, addSshKey } = require('../lib/ssh');
 const { writeEnvFile } = require('../lib/env');
 const { decodeAndWriteFile } = require('../lib/files');
 const { decrypt } = require('../lib/crypto');
+const spinner = require('../lib/spinner');
 
 async function unparkCommand(nameOrLetter) {
   // STEP 1 — PULL VAULT + RESOLVE PROJECT
@@ -125,16 +126,19 @@ async function unparkCommand(nameOrLetter) {
 
   const cloneDest = tmpDir || cloneTarget;
 
-  console.log('Cloning...');
+  spinner.start('Cloning from ' + project.remote);
   const cloneResult = await cloneRepo(project.remote, cloneDest);
 
   if (!cloneResult) {
+    spinner.fail('Clone failed');
     if (tmpDir && fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
     console.error('Clone failed. Your existing directory is untouched.');
     return;
   }
+
+  spinner.succeed('Clone completed');
 
   restoreRoot = cloneDest;
 

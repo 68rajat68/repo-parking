@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const { loadConfig, saveConfig, configExists } = require('../lib/config');
 const { encrypt } = require('../lib/crypto');
+const spinner = require('../lib/spinner');
 
 async function initCommand() {
   let config = loadConfig();
@@ -70,7 +71,7 @@ async function initCommand() {
     fs.mkdirSync(vaultParent, { recursive: true });
   }
 
-  console.log('Cloning vault repository...');
+  spinner.start('Cloning vault repository');
 
   // Detect the default branch before cloning
   let vaultBranch = 'main';
@@ -86,7 +87,9 @@ async function initCommand() {
 
   try {
     await simpleGit().clone(vaultRemote, vaultPath);
+    spinner.succeed('Vault cloned');
   } catch (cloneErr) {
+    spinner.fail('Clone failed');
     if (cloneErr.message && cloneErr.message.includes('Repository not found')) {
       console.error('\n\x1b[31mERROR: Repository not found.\x1b[0m');
       console.error('Make sure:');
@@ -158,9 +161,12 @@ async function initCommand() {
       const commitCount = await git.raw(['rev-list', '--count', 'HEAD']);
       const isFirstCommit = commitCount === '1';
 
+      spinner.start('Pushing to vault');
       try {
         await git.push(['--set-upstream', 'origin', vaultBranch]);
+        spinner.succeed('Pushed to vault');
       } catch (pushErr) {
+        spinner.fail('Push failed');
         if (isFirstCommit) {
           const emptyTreeSha = await git.mktree(['-t', 'tree']);
           const branchName = await git.branchLocal().current;
@@ -169,7 +175,7 @@ async function initCommand() {
         } else {
           await git.reset(['--hard', 'HEAD~1']);
         }
-        throw new Error('Push failed');
+        return;
       }
     } catch (err) {
       console.error('Failed to push to vault:', err.message);

@@ -458,7 +458,6 @@ async function parkCommand(name) {
 
   // Only push to vault AFTER successful confirmation
   saveProject(id, projectData);
-  console.log('Pushing to vault...');
   const pushResult = await pushVault('park: add project ' + projectName);
 
   if (pushResult === false) {
@@ -472,20 +471,27 @@ async function parkCommand(name) {
 }
 
 async function askConfigQuestions() {
-  const { setupCmd } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'setupCmd',
-      message: 'Setup command? (e.g. npm install && npm run dev, or pip install -r requirements.txt)',
-      default: ''
-    }
-  ]);
+  let setupCmd = '';
+  let firstAttempt = true;
+  while (true) {
+    const { setupCmdInput } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'setupCmdInput',
+        message: firstAttempt
+          ? 'Setup command? (e.g. npm install && npm run dev, or pip install -r requirements.txt)'
+          : 'Setup command? (Use && or ; to separate commands, not comma):',
+        default: ''
+      }
+    ]);
+    setupCmd = setupCmdInput;
 
-  // Validate setup command - warn if comma is used (common mistake)
-  if (setupCmd && setupCmd.includes(',')) {
-    console.log('\x1b[33m⚠ Note: Use "&&" or ";" to separate commands, not comma.\x1b[0m');
-    console.log('  Your input: ' + setupCmd);
-    console.log('  Comma will be treated as part of the command and may cause errors.');
+    if (setupCmd && setupCmd.includes(',')) {
+      console.log('\x1b[33m⚠ Note: Use "&&" or ";" to separate commands, not comma.\x1b[0m');
+      firstAttempt = false;
+      continue;
+    }
+    break;
   }
 
   const { extraFilesInput } = await inquirer.prompt([
