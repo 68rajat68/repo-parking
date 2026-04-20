@@ -8,9 +8,13 @@ Park and unpark git repos to save disk space. When you park a repository, it rem
 
 ## Installation
 
+**Requires Node.js v18+**
+
 ```bash
 npm install -g repo-parking
 ```
+
+The `-g` flag is required for global installation. If installed locally (without `-g`), the `parking` command will not be available globally.
 
 ---
 
