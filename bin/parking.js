@@ -104,5 +104,11 @@ try {
   if (err.code === 'commander.helpDisplayed') {
     process.exit(0);
   }
+  if (err.code === 'commander.unknownCommand') {
+    const unknownCmd = err.commandName || process.argv[2] || 'unknown';
+    console.error("error: unknown command '" + unknownCmd + "'");
+    console.error("Run 'parking -h' to see valid commands.");
+    process.exit(1);
+  }
   throw err;
 }
