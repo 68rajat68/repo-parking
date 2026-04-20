@@ -4,7 +4,7 @@
   "description": "Park and unpark git repos to save disk space",
   "main": "bin/parking.js",
   "bin": {
-    "parking": "./bin/parking.js"
+    "parking": "bin/parking.js"
   },
   "engines": {
     "node": ">=18"
@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/68rajat68/repo-parking.git"
+    "url": "git+https://github.com/68rajat68/repo-parking.git"
   },
   "keywords": [
     "git",
