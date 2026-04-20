@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { loadConfig, saveConfig, configExists } = require('../lib/config');
-const { encrypt } = require('../lib/crypto');
+const { encrypt, generateMEK, wrapMEK, wrapMEKWithRecoveryKey, generateRecoveryKey, generateVerifier } = require('../lib/crypto');
 const spinner = require('../lib/spinner');
 
 async function initCommand() {
@@ -61,6 +61,10 @@ async function initCommand() {
       }
     }
   ]);
+
+  // Generate MEK and recovery key
+  const mek = generateMEK();
+  const recoveryKey = generateRecoveryKey();
 
   // Clone vault repo
   const vaultPath = path.join(os.homedir(), '.repo-parking', 'vault');
@@ -143,7 +147,16 @@ async function initCommand() {
   const metaPath = path.join(vaultPath, 'meta.json');
   let metaCreated = false;
   if (!fs.existsSync(metaPath)) {
-    fs.writeFileSync(metaPath, JSON.stringify({ retiredIds: [] }, null, 2));
+    const mek_wrapped_password = wrapMEK(mek, masterPassword);
+    const mek_wrapped_recovery = wrapMEKWithRecoveryKey(mek, recoveryKey.raw);
+    const verifier = generateVerifier(mek);
+    const meta = {
+      retiredIds: [],
+      mek_wrapped_password,
+      mek_wrapped_recovery,
+      verifier
+    };
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
     metaCreated = true;
   }
 
@@ -190,6 +203,44 @@ async function initCommand() {
     vaultBranch: vaultBranch
   };
   saveConfig(newConfig);
+
+  // Show recovery key and require confirmation
+  console.log('');
+  console.log('\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0');
+  console.log('\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0');
+  console.log('\x1b[33m║                                                      ║\x1b[0');
+  console.log('\x1b[33m║  ' + recoveryKey.display + '      ║\x1b[0');
+  console.log('\x1b[33m║                                                      ║\x1b[0');
+  console.log('\x1b[33m║  If you forget your master password, this key        ║\x1b[0');
+  console.log('\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0');
+  console.log('\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0');
+  console.log('\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0');
+  console.log('');
+
+  let keyConfirmed = false;
+  while (!keyConfirmed) {
+    const { savedKey } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'savedKey',
+        message: 'Have you saved your recovery key? [y/N]'
+      }
+    ]);
+    if (savedKey.toLowerCase() === 'y') {
+      keyConfirmed = true;
+    } else {
+      console.log('\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0');
+      console.log('\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0');
+      console.log('\x1b[33m║                                                      ║\x1b[0');
+      console.log('\x1b[33m║  ' + recoveryKey.display + '      ║\x1b[0m');
+      console.log('\x1b[33m║                                                      ║\x1b[0');
+      console.log('\x1b[33m║  If you forget your master password, this key        ║\x1b[0');
+      console.log('\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0');
+      console.log('\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0');
+      console.log('\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0');
+      console.log('');
+    }
+  }
 
   console.log('\x1b[33m\x1b[1m⚠ Your master password cannot be recovered. Store it safely — it is never saved anywhere.\x1b[0m');
   console.log('Initialized successfully.');

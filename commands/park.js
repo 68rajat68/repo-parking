@@ -3,11 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const simpleGit = require('simple-git');
 const { ensureVaultExists, listProjects, loadMeta, saveMeta, saveProject, pushVault } = require('../lib/vault');
-const { isGitRepo, hasCommits, getRepoRoot, getUpstreamInfo, getUncommittedFiles, getUnpushedCommits, commitAndPush, pushOnly } = require('../lib/git');
+const { isGitRepo, hasCommits, getRepoRoot, getUpstreamInfo, getUncommittedFiles, getUnpushedCommits, commitAndPush, pushOnly, getAllBranchesWithUnpushed } = require('../lib/git');
 const { parseSshConfig } = require('../lib/ssh');
 const { readEnvFile } = require('../lib/env');
 const { validateRelativePath, encodeFile, validateFileSizes, getNextLetter } = require('../lib/files');
-const { encrypt } = require('../lib/crypto');
+const { unwrapMEK, encryptWithMEK } = require('../lib/crypto');
 
 function validateProjectName(name) {
   if (!name || name.trim() === '') {
@@ -225,6 +225,16 @@ async function parkCommand(name) {
     }
   ]);
 
+  // Unwrap MEK using master password
+  const meta = loadMeta();
+  let mek;
+  try {
+    mek = unwrapMEK(meta.mek_wrapped_password, masterPassword);
+  } catch (err) {
+    console.error('Incorrect master password.');
+    return;
+  }
+
   // Print warning only on first park
   if (allProjects.length === 0) {
     console.log('\x1b[33m⚠ Your master password cannot be recovered. Make sure you remember it.\x1b[0m');
@@ -309,6 +319,19 @@ async function parkCommand(name) {
     }
   }
 
+  // Check ALL local branches for unpushed commits
+  const blockedBranches = await getAllBranchesWithUnpushed(repoRoot);
+
+  if (blockedBranches.length > 0) {
+    console.error('\n\x1b[31mERROR: The following branches have unpushed commits:\x1b[0m');
+    for (const b of blockedBranches) {
+      console.error(`  \x1b[33m${b.branchName}\x1b[0m (${b.unpushedCount} unpushed commit${b.unpushedCount === 1 ? '' : 's'})`);
+    }
+    console.error('\n\x1b[31mParking deletes ALL local branches including the above.\x1b[0m');
+    console.error('Push or merge all branches before parking.\n');
+    process.exit(1);
+  }
+
   // STEP 6 — PROJECT CONFIGURATION
   let setupCmd = '';
   let extraFiles = [];
@@ -356,7 +379,7 @@ async function parkCommand(name) {
       sshPassphrase = configAnswers.sshPassphrase;
       notes = configAnswers.notes;
       if (sshPassphrase) {
-        sshPassphraseEnc = encrypt(sshPassphrase, masterPassword);
+        sshPassphraseEnc = encryptWithMEK(sshPassphrase, mek);
       }
     }
   } else {
@@ -369,13 +392,13 @@ async function parkCommand(name) {
     sshPassphrase = configAnswers.sshPassphrase;
     notes = configAnswers.notes;
     if (sshPassphrase) {
-      sshPassphraseEnc = encrypt(sshPassphrase, masterPassword);
+      sshPassphraseEnc = encryptWithMEK(sshPassphrase, mek);
     }
   }
 
   // STEP 7 — SNAPSHOT + LETTER ASSIGNMENT
   const envRaw = readEnvFile(repoRoot);
-  const envEnc = envRaw ? encrypt(envRaw.toString('base64'), masterPassword) : null;
+  const envEnc = envRaw ? encryptWithMEK(envRaw.toString('base64'), mek) : null;
 
   // Read extra files
   const extraFilesData = [];
@@ -384,7 +407,7 @@ async function parkCommand(name) {
     if (fs.existsSync(fullPath)) {
       const fileBuffer = fs.readFileSync(fullPath);
       const fileB64 = fileBuffer.toString('base64');
-      const fileEnc = encrypt(fileB64, masterPassword);
+      const fileEnc = encryptWithMEK(fileB64, mek);
       extraFilesData.push({
         path: file.path,
         data_enc: fileEnc
@@ -401,8 +424,7 @@ async function parkCommand(name) {
     parkedBranch = null;
   }
 
-  // Load meta and assign letter
-  const meta = loadMeta();
+  // Load meta and assign letter (meta already loaded in Step 4)
   const allProjectFiles = listProjects();
   const activeIds = allProjectFiles.map(p => p.id);
   const allUsedIds = [...meta.retiredIds, ...activeIds];

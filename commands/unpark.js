@@ -3,12 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
 const simpleGit = require('simple-git');
-const { ensureVaultExists, loadProject } = require('../lib/vault');
+const { ensureVaultExists, loadProject, loadMeta } = require('../lib/vault');
 const { cloneRepo } = require('../lib/git');
 const { parseSshConfig, addSshKey } = require('../lib/ssh');
 const { writeEnvFile } = require('../lib/env');
 const { decodeAndWriteFile } = require('../lib/files');
-const { decrypt } = require('../lib/crypto');
+const { decrypt, unwrapMEK, decryptWithMEK, generateVerifier } = require('../lib/crypto');
 const spinner = require('../lib/spinner');
 
 async function unparkCommand(nameOrLetter) {
@@ -57,7 +57,7 @@ async function unparkCommand(nameOrLetter) {
     overwriteConfirmed = true;
   }
 
-  // STEP 2 — DECRYPT (password prompt)
+  // STEP 2 — DECRYPT (password prompt + MEK unwrap)
   const { masterPassword } = await inquirer.prompt([
     {
       type: 'password',
@@ -68,26 +68,70 @@ async function unparkCommand(nameOrLetter) {
   ]);
 
   let decryptedData = {};
-  try {
-    if (project.env_enc) {
-      decryptedData.env = decrypt(project.env_enc, masterPassword);
+  let mek = null;
+  const meta = loadMeta();
+
+  if (meta.mek_wrapped_password) {
+    // New format: unwrap MEK, verify, then decrypt
+    try {
+      mek = unwrapMEK(meta.mek_wrapped_password, masterPassword);
+    } catch (err) {
+      console.error('Incorrect master password.');
+      return;
     }
-    if (project.ssh_passphrase_enc) {
-      decryptedData.sshPassphrase = decrypt(project.ssh_passphrase_enc, masterPassword);
+
+    // Verify with HMAC
+    const computedVerifier = generateVerifier(mek);
+    if (computedVerifier !== meta.verifier) {
+      console.error('Incorrect master password.');
+      return;
     }
-    decryptedData.extraFiles = [];
-    if (project.extra_files) {
-      for (const file of project.extra_files) {
-        const decryptedContent = decrypt(file.data_enc, masterPassword);
-        decryptedData.extraFiles.push({
-          path: file.path,
-          data: decryptedContent
-        });
+
+    // Decrypt fields with MEK
+    try {
+      if (project.env_enc) {
+        decryptedData.env = decryptWithMEK(project.env_enc, mek);
       }
+      if (project.ssh_passphrase_enc) {
+        decryptedData.sshPassphrase = decryptWithMEK(project.ssh_passphrase_enc, mek);
+      }
+      decryptedData.extraFiles = [];
+      if (project.extra_files) {
+        for (const file of project.extra_files) {
+          const decryptedContent = decryptWithMEK(file.data_enc, mek);
+          decryptedData.extraFiles.push({
+            path: file.path,
+            data: decryptedContent
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Incorrect master password.');
+      return;
     }
-  } catch (err) {
-    console.error('Incorrect master password.');
-    return;
+  } else {
+    // Legacy format: use old decrypt directly
+    try {
+      if (project.env_enc) {
+        decryptedData.env = decrypt(project.env_enc, masterPassword);
+      }
+      if (project.ssh_passphrase_enc) {
+        decryptedData.sshPassphrase = decrypt(project.ssh_passphrase_enc, masterPassword);
+      }
+      decryptedData.extraFiles = [];
+      if (project.extra_files) {
+        for (const file of project.extra_files) {
+          const decryptedContent = decrypt(file.data_enc, masterPassword);
+          decryptedData.extraFiles.push({
+            path: file.path,
+            data: decryptedContent
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Incorrect master password.');
+      return;
+    }
   }
 
   // STEP 3 — LOAD SSH KEY

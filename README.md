@@ -33,7 +33,7 @@ You'll be asked for:
 - Vault repo remote URL
 - Master password (never stored - memorize this!)
 
-**WARNING:** Your master password cannot be recovered. Store it in a password manager if you rely on this tool.
+**IMPORTANT:** During init, a **recovery key** will be shown. This is your safety net if you forget your password. Write it down and store it safely — it will NOT be shown again.
 
 ---
 
@@ -54,6 +54,8 @@ You'll be asked about:
 - Extra files to preserve (beyond .env)
 - SSH alias for this repo
 - Notes
+
+**Safety:** Parking checks ALL local branches for unpushed commits. If any branch has unpushed work, parking is blocked to prevent data loss.
 
 ### `parking list`
 
@@ -95,9 +97,45 @@ parking forget my-app
 parking forget A
 ```
 
+### `parking change-password`
+
+Change your master password without re-encrypting vault data. The encryption key (MEK) stays the same — only the password wrapper changes.
+
+```bash
+parking change-password
+```
+
+You'll be asked for:
+- Current master password
+- New master password
+- Whether to generate a new recovery key
+
+### `parking recover`
+
+Reset your master password using the recovery key. This restores access to your vault without losing any parked projects.
+
+```bash
+parking recover
+```
+
+You'll be asked for:
+- Recovery key (format: `xxxx-xxxx-xxxx-xxxx-xxxx`)
+- New master password
+- Whether to generate a new recovery key
+
 ---
 
 ## Security Notes
+
+### Recovery Key
+
+During `parking init`, a recovery key is generated and shown ONCE. This key:
+- Is stored encrypted in your vault
+- Can reset your password if forgotten
+- Is the ONLY way to recover if you forget your password
+- Should be stored safely (password manager, secure note, etc.)
+
+**WARNING:** If you forget both your password AND lose your recovery key, your parked .env files and extra files cannot be recovered.
 
 ### Setup Command Security
 
@@ -105,7 +143,9 @@ The setup command stored in your vault runs on unpark. Since your vault is your 
 
 ### Master Password
 
-Your master password is never saved anywhere. All sensitive data (.env files, SSH passphrases) is encrypted with AES-256-GCM using your master password as the key derivation input. If you forget it, your parked .env files and extra files cannot be recovered.
+Your master password is never saved anywhere. The password wraps a master encryption key (MEK) which encrypts all vault data. This architecture allows:
+- Password changes without re-encrypting all data
+- Password recovery via recovery key
 
 ### SSH Keys
 
@@ -145,6 +185,11 @@ Project names must be unique across all parked repos. If you try to park two rep
 ## Technical Details
 
 - Encryption: AES-256-GCM with PBKDF2 key derivation (100,000 iterations, SHA-256)
+- MEK (Master Encryption Key): 32-byte random key used for all vault data encryption
+- Password-based MEK wrapping: PBKDF2-derived key wraps the MEK
+- Recovery key wrapping: Recovery key raw bytes wrap the MEK as backup
+- HMAC-SHA256 verifier confirms correct password without decrypting data
 - All sensitive data encrypted before storage in vault
 - Vault is a standard git repository
 - Projects stored as individual JSON files in `vault/projects/`
+- Meta information stored in `vault/meta.json`

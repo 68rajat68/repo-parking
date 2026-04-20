@@ -27,6 +27,8 @@ const statusCommand = require('../commands/status');
 const forgetCommand = require('../commands/forget');
 const parkCommand = require('../commands/park');
 const unparkCommand = require('../commands/unpark');
+const changePasswordCommand = require('../commands/change-password');
+const recoverCommand = require('../commands/recover');
 
 program.version('1.0.0', '-v, --version', 'Print version number');
 
@@ -93,6 +95,30 @@ program
       process.exit(1);
     }
     unparkCommand(nameOrLetter);
+  });
+
+program
+  .command('change-password')
+  .description('Change your master password without re-encrypting vault data')
+  .action(() => {
+    const config = loadConfig();
+    if (!config) {
+      console.error('Not initialized. Run `parking init` first.');
+      process.exit(1);
+    }
+    changePasswordCommand();
+  });
+
+program
+  .command('recover')
+  .description('Reset master password using your recovery key')
+  .action(() => {
+    const config = loadConfig();
+    if (!config) {
+      console.error('Not initialized. Run `parking init` first.');
+      process.exit(1);
+    }
+    recoverCommand();
   });
 
 try {
