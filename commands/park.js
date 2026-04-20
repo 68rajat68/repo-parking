@@ -6,7 +6,7 @@ const { ensureVaultExists, listProjects, loadMeta, saveMeta, saveProject, pushVa
 const { isGitRepo, hasCommits, getRepoRoot, getUpstreamInfo, getUncommittedFiles, getUnpushedCommits, commitAndPush, pushOnly, getAllBranchesWithUnpushed } = require('../lib/git');
 const { parseSshConfig } = require('../lib/ssh');
 const { readEnvFile } = require('../lib/env');
-const { validateRelativePath, encodeFile, validateFileSizes, getNextLetter } = require('../lib/files');
+const { validateRelativePath, encodeFile, validateFileSizes, getNextLetter, getGitignoreFiles } = require('../lib/files');
 const { unwrapMEK, encryptWithMEK } = require('../lib/crypto');
 
 function validateProjectName(name) {
@@ -371,7 +371,8 @@ async function parkCommand(name) {
       notes = existingProject.notes || '';
     } else {
       // Update - ask all questions
-      const configAnswers = await askConfigQuestions();
+      const existingExtraFilePaths = (existingProject.extra_files || []).map(f => f.path);
+      const configAnswers = await askConfigQuestions(repoRoot, existingExtraFilePaths);
       setupCmd = configAnswers.setupCmd;
       extraFiles = configAnswers.extraFiles;
       sshAlias = configAnswers.sshAlias;
@@ -384,7 +385,7 @@ async function parkCommand(name) {
     }
   } else {
     // New project - ask all questions
-    const configAnswers = await askConfigQuestions();
+    const configAnswers = await askConfigQuestions(repoRoot, []);
     setupCmd = configAnswers.setupCmd;
     extraFiles = configAnswers.extraFiles;
     sshAlias = configAnswers.sshAlias;
@@ -489,10 +490,25 @@ async function parkCommand(name) {
 
   // Now safe to delete local folder
   fs.rmSync(repoRoot, { recursive: true, force: true });
-  console.log('Parked as [' + id + ']. Use parking unpark ' + id + ' to restore.');
+
+  // Move the Node process out of the deleted directory
+  const parentDir = path.dirname(repoRoot);
+  try {
+    process.chdir(parentDir);
+  } catch (e) {
+    // Ignore if chdir fails
+  }
+
+  // Print success message and cd instruction
+  console.log('\n\x1b[32m✓ Parked as [' + id + ']. Use `parking unpark ' + id + '` to restore.\x1b[0m');
+  console.log('\n\x1b[90m─────────────────────────────────────────────────\x1b[0m');
+  console.log('\x1b[33mYour terminal is still pointing at the deleted folder.\x1b[0m');
+  console.log('\x1b[33mRun this to go to the parent directory:\x1b[0m');
+  console.log('\n  \x1b[1;36mcd ' + parentDir + '\x1b[0m\n');
+  console.log('\x1b[90m─────────────────────────────────────────────────\x1b[0m\n');
 }
 
-async function askConfigQuestions() {
+async function askConfigQuestions(repoRoot, existingExtraFiles) {
   let setupCmd = '';
   let firstAttempt = true;
   while (true) {
@@ -516,22 +532,8 @@ async function askConfigQuestions() {
     break;
   }
 
-  const { extraFilesInput } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'extraFilesInput',
-      message: 'Extra files? (comma-separated relative paths, e.g. config/local.json,certs/dev.pem)',
-      default: ''
-    }
-  ]);
-
-  const extraFiles = [];
-  if (extraFilesInput && extraFilesInput.trim()) {
-    const paths = extraFilesInput.split(',').map(p => p.trim()).filter(p => p);
-    for (const p of paths) {
-      extraFiles.push({ path: p });
-    }
-  }
+  // Extra files — gitignore-based checkbox picker
+  const extraFiles = await askExtraFiles(repoRoot, existingExtraFiles);
 
   // SSH alias selection
   const knownKeys = parseSshConfig();
@@ -622,8 +624,7 @@ async function askConfigQuestions() {
           {
             type: 'password',
             name: 'passphrase',
-            message: 'Enter SSH passphrase:',
-            mask: '*'
+            message: 'SSH key passphrase:'
           }
         ]);
         sshPassphrase = passphrase;
@@ -648,6 +649,109 @@ async function askConfigQuestions() {
     sshPassphrase,
     notes
   };
+}
+
+async function askExtraFiles(repoRoot, existingExtraFiles) {
+  // Step 1: Scan gitignore
+  process.stdout.write('\nScanning .gitignore for extra files to preserve...\n');
+  const { files, warnings } = await getGitignoreFiles(repoRoot);
+
+  // Step 2: If warnings exist, show them
+  for (const w of warnings) {
+    console.log('\x1b[33m⚠ File is large (>500KB), parking will warn: ' + w + '\x1b[0m');
+  }
+
+  // Step 3: Build checkbox choices
+  const choices = files.map(f => {
+    const isEnv = f === '.env' || f.startsWith('.env.');
+    const wasChecked = existingExtraFiles.includes(f);
+    return {
+      name: f,
+      value: f,
+      checked: isEnv || wasChecked
+    };
+  });
+
+  // Step 4: Handle cases
+  if (choices.length === 0) {
+    // No gitignored files found on disk
+    console.log('\x1b[90mNo .gitignore\'d files found on disk.\x1b[0m');
+    console.log('Enter paths manually (comma-separated) or press Enter to skip:');
+    const { manual } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'manual',
+        message: 'Extra files (optional):',
+        default: ''
+      }
+    ]);
+    if (!manual.trim()) return [];
+    const manualPaths = manual.split(',').map(s => s.trim()).filter(Boolean);
+
+    // Validate each path
+    const validPaths = [];
+    for (const p of manualPaths) {
+      try {
+        validateRelativePath(p, repoRoot);
+        validPaths.push({ path: p });
+      } catch (e) {
+        console.log('\x1b[33m⚠ Skipping invalid path: ' + p + ' (' + e.message + ')\x1b[0m');
+      }
+    }
+    return validPaths;
+  }
+
+  // Step 5: Show checkbox list
+  console.log('\nSelect extra files to preserve (space to toggle, enter to confirm):');
+  console.log('\x1b[90m.env files are pre-selected. Others are unchecked by default.\x1b[0m\n');
+
+  const { selected } = await inquirer.prompt([
+    {
+      type: 'checkbox',
+      name: 'selected',
+      message: 'Extra files to preserve:',
+      choices: choices,
+      pageSize: 15
+    }
+  ]);
+
+  // Step 6: Also offer manual addition
+  const { addMore } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'addMore',
+      message: 'Add any files not shown above?',
+      default: false
+    }
+  ]);
+
+  let manualAdditions = [];
+  if (addMore) {
+    const { manual } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'manual',
+        message: 'Enter paths (comma-separated):',
+        default: ''
+      }
+    ]);
+    manualAdditions = manual.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  // Step 7: Combine, deduplicate, validate all paths
+  const allPaths = [...new Set([...selected, ...manualAdditions])];
+
+  const validPaths = [];
+  for (const p of allPaths) {
+    try {
+      validateRelativePath(p, repoRoot);
+      validPaths.push({ path: p });
+    } catch (e) {
+      console.log('\x1b[33m⚠ Skipping invalid path: ' + p + ' (' + e.message + ')\x1b[0m');
+    }
+  }
+
+  return validPaths;
 }
 
 module.exports = parkCommand;
