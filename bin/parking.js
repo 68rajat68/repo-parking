@@ -15,6 +15,10 @@ const { program } = require('commander');
 const path = require('path');
 const fs = require('fs');
 
+// Read version from package.json
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const version = packageJson.version;
+
 // 3. COMMANDER EXIT OVERRIDE
 // Commander calls process.exit() automatically on errors. This prevents rollback
 // logic in pushVault from running. Fix: add exitOverride() BEFORE adding commands.
@@ -30,7 +34,7 @@ const unparkCommand = require('../commands/unpark');
 const changePasswordCommand = require('../commands/change-password');
 const recoverCommand = require('../commands/recover');
 
-program.version('1.0.0', '-v, --version', 'Print version number');
+program.version(version, '-v, --version', 'Print version number');
 
 program
   .command('init')
