@@ -1,6 +1,6 @@
 {
   "name": "repo-parking",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Park and unpark git repos to save disk space",
   "main": "bin/parking.js",
   "bin": {
