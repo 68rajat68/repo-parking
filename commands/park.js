@@ -1,26 +1,60 @@
-const inquirer = require('inquirer');
-const path = require('path');
-const fs = require('fs');
-const simpleGit = require('simple-git');
-const { ensureVaultExists, listProjects, loadMeta, saveMeta, saveProject, pushVault } = require('../lib/vault');
-const { isGitRepo, hasCommits, getRepoRoot, getUpstreamInfo, getUncommittedFiles, getUnpushedCommits, commitAndPush, pushOnly, getAllBranchesWithUnpushed } = require('../lib/git');
-const { parseSshConfig } = require('../lib/ssh');
-const { readEnvFile } = require('../lib/env');
-const { validateRelativePath, encodeFile, validateFileSizes, getNextLetter, getGitignoreFiles } = require('../lib/files');
-const { unwrapMEK, encryptWithMEK } = require('../lib/crypto');
+const inquirer = require("inquirer");
+const path = require("path");
+const fs = require("fs");
+const simpleGit = require("simple-git");
+const {
+  ensureVaultExists,
+  listProjects,
+  loadMeta,
+  saveMeta,
+  saveProject,
+  pushVault,
+} = require("../lib/vault");
+const {
+  isGitRepo,
+  hasCommits,
+  getRepoRoot,
+  getUpstreamInfo,
+  getUncommittedFiles,
+  getUnpushedCommits,
+  commitAndPush,
+  pushOnly,
+  getAllBranchesWithUnpushed,
+} = require("../lib/git");
+const { parseSshConfig } = require("../lib/ssh");
+const { readEnvFile } = require("../lib/env");
+const {
+  validateRelativePath,
+  encodeFile,
+  validateFileSizes,
+  getNextLetter,
+  getGitignoreFiles,
+} = require("../lib/files");
+const { unwrapMEK, encryptWithMEK } = require("../lib/crypto");
 
 function validateProjectName(name) {
-  if (!name || name.trim() === '') {
-    return { valid: false, error: 'Project name cannot be empty.' };
+  if (!name || name.trim() === "") {
+    return { valid: false, error: "Project name cannot be empty." };
   }
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    return { valid: false, error: 'Project name can only contain letters, numbers, hyphens, and underscores.' };
+    return {
+      valid: false,
+      error:
+        "Project name can only contain letters, numbers, hyphens, and underscores.",
+    };
   }
   if (/^[A-Z]+$/.test(name)) {
-    return { valid: false, error: 'Names cannot be all uppercase letters (reserved for IDs). Try: my-API, api-server, etc.' };
+    return {
+      valid: false,
+      error:
+        "Names cannot be all uppercase letters (reserved for IDs). Try: my-API, api-server, etc.",
+    };
   }
-  if (name.includes('/') || name.includes('\\') || name.includes('..')) {
-    return { valid: false, error: 'Project name cannot contain path separators or dot-segments.' };
+  if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+    return {
+      valid: false,
+      error: "Project name cannot contain path separators or dot-segments.",
+    };
   }
   return { valid: true };
 }
@@ -35,11 +69,11 @@ async function parkCommand(name) {
 
   // STEP 1 — RESOLVE REPO ROOT
   if (!isGitRepo()) {
-    console.error('Not inside a git repository.');
+    console.error("Not inside a git repository.");
     return;
   }
   if (!hasCommits()) {
-    console.error('No commits yet. Make at least one commit.');
+    console.error("No commits yet. Make at least one commit.");
     return;
   }
 
@@ -60,16 +94,17 @@ async function parkCommand(name) {
     // Multi-remote with no upstream - need to ask user to pick
     const choices = upstreamInfo.availableRemotes.map((r, i) => ({
       name: r,
-      value: r
+      value: r,
     }));
 
     const { selectedRemote } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'selectedRemote',
-        message: 'Multiple remotes found. Which remote should be used for parking?',
-        choices: choices
-      }
+        type: "list",
+        name: "selectedRemote",
+        message:
+          "Multiple remotes found. Which remote should be used for parking?",
+        choices: choices,
+      },
     ]);
 
     remoteName = selectedRemote;
@@ -80,8 +115,8 @@ async function parkCommand(name) {
     remoteUrl = git.remoteGetUrl([remoteName]).trim();
 
     try {
-      remotePushUrl = git.config(['remote.' + remoteName + '.pushurl']).trim();
-      if (remotePushUrl === '') {
+      remotePushUrl = git.config(["remote." + remoteName + ".pushurl"]).trim();
+      if (remotePushUrl === "") {
         remotePushUrl = undefined;
       }
     } catch (err) {
@@ -90,11 +125,15 @@ async function parkCommand(name) {
 
     // Check for embedded credentials
     if (/^https?:\/\/[^@]+@/i.test(remoteUrl)) {
-      console.error('Remote URL contains embedded credentials. Use SSH or a token URL without username.');
+      console.error(
+        "Remote URL contains embedded credentials. Use SSH or a token URL without username.",
+      );
       return;
     }
     if (remotePushUrl && /^https?:\/\/[^@]+@/i.test(remotePushUrl)) {
-      console.error('Push URL contains embedded credentials. Remove credentials and use a token without username. SSH URLs do not have this issue.');
+      console.error(
+        "Push URL contains embedded credentials. Remove credentials and use a token without username. SSH URLs do not have this issue.",
+      );
       return;
     }
   } else {
@@ -109,39 +148,43 @@ async function parkCommand(name) {
   try {
     await ensureVaultExists();
   } catch (err) {
-    if (err.message.startsWith('VAULT_PULL_FAILED:')) {
-      console.error('Could not reach vault. Check your internet connection and try again.');
+    if (err.message.startsWith("VAULT_PULL_FAILED:")) {
+      console.error(
+        "Could not reach vault. Check your internet connection and try again.",
+      );
     } else {
-      console.error('Vault error:', err.message);
+      console.error("Vault error:", err.message);
     }
     return;
   }
 
   const allProjects = listProjects();
-  const nameMatches = allProjects.filter(p => p.name === name);
-  const remoteMatches = allProjects.filter(p => p.remote === remoteUrl);
-  const duplicates = allProjects.filter(p => p.name === name && p.remote === remoteUrl);
+  const nameMatches = allProjects.filter((p) => p.name === name);
+  const remoteMatches = allProjects.filter((p) => p.remote === remoteUrl);
+  const duplicates = allProjects.filter(
+    (p) => p.name === name && p.remote === remoteUrl,
+  );
 
   let existingProject = null;
-  let duplicateChoice = 'new';
+  let duplicateChoice = "new";
 
   if (duplicates.length > 0) {
     existingProject = duplicates[0];
     const { action } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'action',
-        message: 'A project with the same name and remote already exists:',
+        type: "list",
+        name: "action",
+        message: "A project with the same name and remote already exists:",
         choices: [
-          { name: 'Overwrite existing entry', value: 'overwrite' },
-          { name: 'Create new entry with different name', value: 'new' },
-          { name: 'Cancel', value: 'cancel' }
-        ]
-      }
+          { name: "Overwrite existing entry", value: "overwrite" },
+          { name: "Create new entry with different name", value: "new" },
+          { name: "Cancel", value: "cancel" },
+        ],
+      },
     ]);
 
-    if (action === 'cancel') {
-      console.log('Cancelled.');
+    if (action === "cancel") {
+      console.log("Cancelled.");
       return;
     }
     duplicateChoice = action;
@@ -149,68 +192,69 @@ async function parkCommand(name) {
     existingProject = nameMatches[0];
     const { action } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'action',
-        message: 'A project with the same name but different remote exists:',
+        type: "list",
+        name: "action",
+        message: "A project with the same name but different remote exists:",
         choices: [
-          { name: 'Create new entry with different name', value: 'new' },
-          { name: 'Cancel', value: 'cancel' }
-        ]
-      }
+          { name: "Create new entry with different name", value: "new" },
+          { name: "Cancel", value: "cancel" },
+        ],
+      },
     ]);
 
-    if (action === 'cancel') {
-      console.log('Cancelled.');
+    if (action === "cancel") {
+      console.log("Cancelled.");
       return;
     }
-    duplicateChoice = 'new';
+    duplicateChoice = "new";
   } else if (remoteMatches.length > 0) {
     existingProject = remoteMatches[0];
     const { action } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'action',
-        message: 'This remote is already parked as "' + existingProject.name + '":',
+        type: "list",
+        name: "action",
+        message:
+          'This remote is already parked as "' + existingProject.name + '":',
         choices: [
-          { name: 'Overwrite existing entry', value: 'overwrite' },
-          { name: 'Create new entry with different name', value: 'new' },
-          { name: 'Cancel', value: 'cancel' }
-        ]
-      }
+          { name: "Overwrite existing entry", value: "overwrite" },
+          { name: "Create new entry with different name", value: "new" },
+          { name: "Cancel", value: "cancel" },
+        ],
+      },
     ]);
 
-    if (action === 'cancel') {
-      console.log('Cancelled.');
+    if (action === "cancel") {
+      console.log("Cancelled.");
       return;
     }
     duplicateChoice = action;
   }
 
   let projectName = name;
-  if (duplicateChoice === 'new' && existingProject) {
+  if (duplicateChoice === "new" && existingProject) {
     // Force user to provide a different name
     const { newName } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'newName',
-        message: 'Enter a different name for this project:',
+        type: "input",
+        name: "newName",
+        message: "Enter a different name for this project:",
         validate: (input) => {
-          if (!input || input.trim() === '') {
-            return 'Project name cannot be empty.';
+          if (!input || input.trim() === "") {
+            return "Project name cannot be empty.";
           }
           if (!/^[a-zA-Z0-9_-]+$/.test(input)) {
-            return 'Project name can only contain letters, numbers, hyphens, and underscores.';
+            return "Project name can only contain letters, numbers, hyphens, and underscores.";
           }
           if (/^[A-Z]+$/.test(input)) {
-            return 'Names cannot be all uppercase letters (reserved for IDs). Try: my-API, api-server, etc.';
+            return "Names cannot be all uppercase letters (reserved for IDs). Try: my-API, api-server, etc.";
           }
           const allProjectsNow = listProjects();
-          if (allProjectsNow.some(p => p.name === input)) {
-            return 'A project with this name already exists.';
+          if (allProjectsNow.some((p) => p.name === input)) {
+            return "A project with this name already exists.";
           }
           return true;
-        }
-      }
+        },
+      },
     ]);
     projectName = newName;
   }
@@ -218,11 +262,11 @@ async function parkCommand(name) {
   // STEP 4 — PROMPT MASTER PASSWORD
   const { masterPassword } = await inquirer.prompt([
     {
-      type: 'password',
-      name: 'masterPassword',
-      message: 'Master password:',
-      mask: '*'
-    }
+      type: "password",
+      name: "masterPassword",
+      message: "Master password:",
+      mask: "*",
+    },
   ]);
 
   // Unwrap MEK using master password
@@ -231,90 +275,119 @@ async function parkCommand(name) {
   try {
     mek = unwrapMEK(meta.mek_wrapped_password, masterPassword);
   } catch (err) {
-    console.error('Incorrect master password.');
+    console.error("Incorrect master password.");
     return;
   }
 
   // Print warning only on first park
   if (allProjects.length === 0) {
-    console.log('\x1b[33m⚠ Your master password cannot be recovered. Make sure you remember it.\x1b[0m');
+    console.log(
+      "\x1b[33m⚠ Your master password cannot be recovered. Make sure you remember it.\x1b[0m",
+    );
   }
 
   // STEP 5 — GIT SAFETY CHECK
   const uncommittedFiles = getUncommittedFiles(repoRoot);
-  const unpushedCommits = getUnpushedCommits(remoteName, trackingBranch, hasUpstream, repoRoot);
+  const unpushedCommits = getUnpushedCommits(
+    remoteName,
+    trackingBranch,
+    hasUpstream,
+    repoRoot,
+  );
 
   if (uncommittedFiles.length > 0 && unpushedCommits.length > 0) {
-    console.log(uncommittedFiles.length + ' uncommitted file(s), ' + unpushedCommits.length + ' unpushed commit(s)');
+    console.log(
+      uncommittedFiles.length +
+        " uncommitted file(s), " +
+        unpushedCommits.length +
+        " unpushed commit(s)",
+    );
 
     const { gitAction } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'gitAction',
-        message: 'Handle manually or let parking do it?',
+        type: "list",
+        name: "gitAction",
+        message: "Handle manually or let parking do it?",
         choices: [
-          { name: 'Handle manually', value: 'manual' },
-          { name: 'Let parking handle it', value: 'auto' }
-        ]
-      }
+          { name: "Handle manually", value: "manual" },
+          { name: "Let parking handle it", value: "auto" },
+        ],
+      },
     ]);
 
-    if (gitAction === 'manual') {
-      console.log('Cancelled. Please commit and push your changes first.');
+    if (gitAction === "manual") {
+      console.log("Cancelled. Please commit and push your changes first.");
       return;
     }
 
     const { commitMessage } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'commitMessage',
-        message: 'Commit message:'
-      }
+        type: "input",
+        name: "commitMessage",
+        message: "Commit message:",
+      },
     ]);
 
-    const commitResult = commitAndPush(commitMessage, remoteName, trackingBranch, hasUpstream, repoRoot);
+    const commitResult = commitAndPush(
+      commitMessage,
+      remoteName,
+      trackingBranch,
+      hasUpstream,
+      repoRoot,
+    );
     if (!commitResult) {
-      console.error('Push failed. Aborting.');
+      console.error("Push failed. Aborting.");
       return;
     }
   } else if (unpushedCommits.length > 0) {
     // Clean working tree with unpushed commits
-    const pushResult = pushOnly(remoteName, trackingBranch, hasUpstream, repoRoot);
+    const pushResult = pushOnly(
+      remoteName,
+      trackingBranch,
+      hasUpstream,
+      repoRoot,
+    );
     if (!pushResult) {
-      console.error('Push failed. Aborting.');
+      console.error("Push failed. Aborting.");
       return;
     }
   } else if (uncommittedFiles.length > 0) {
-    console.log(uncommittedFiles.length + ' uncommitted file(s)');
+    console.log(uncommittedFiles.length + " uncommitted file(s)");
 
     const { gitAction } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'gitAction',
-        message: 'Handle manually or let parking do it?',
+        type: "list",
+        name: "gitAction",
+        message: "Handle manually or let parking do it?",
         choices: [
-          { name: 'Handle manually', value: 'manual' },
-          { name: 'Let parking handle it', value: 'auto' }
-        ]
-      }
+          { name: "Handle manually", value: "manual" },
+          { name: "Let parking handle it", value: "auto" },
+        ],
+      },
     ]);
 
-    if (gitAction === 'manual') {
-      console.log('Cancelled. Please commit and push your changes first.');
+    if (gitAction === "manual") {
+      console.log("Cancelled. Please commit and push your changes first.");
       return;
     }
 
     const { commitMessage } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'commitMessage',
-        message: 'Commit message:'
-      }
+        type: "input",
+        name: "commitMessage",
+        message: "Commit message:",
+      },
     ]);
 
-    const commitResult = commitAndPush(commitMessage, remoteName, trackingBranch, hasUpstream, repoRoot);
+    const commitResult = commitAndPush(
+      commitMessage,
+      remoteName,
+      trackingBranch,
+      hasUpstream,
+      repoRoot,
+    );
     if (!commitResult) {
-      console.error('Push failed. Aborting.');
+      console.error("Push failed. Aborting.");
       return;
     }
   }
@@ -323,56 +396,67 @@ async function parkCommand(name) {
   const blockedBranches = await getAllBranchesWithUnpushed(repoRoot);
 
   if (blockedBranches.length > 0) {
-    console.error('\n\x1b[31mERROR: The following branches have unpushed commits:\x1b[0m');
+    console.error(
+      "\n\x1b[31mERROR: The following branches have unpushed commits:\x1b[0m",
+    );
     for (const b of blockedBranches) {
-      console.error(`  \x1b[33m${b.branchName}\x1b[0m (${b.unpushedCount} unpushed commit${b.unpushedCount === 1 ? '' : 's'})`);
+      console.error(
+        `  \x1b[33m${b.branchName}\x1b[0m (${b.unpushedCount} unpushed commit${b.unpushedCount === 1 ? "" : "s"})`,
+      );
     }
-    console.error('\n\x1b[31mParking deletes ALL local branches including the above.\x1b[0m');
-    console.error('Push or merge all branches before parking.\n');
+    console.error(
+      "\n\x1b[31mParking deletes ALL local branches including the above.\x1b[0m",
+    );
+    console.error("Push or merge all branches before parking.\n");
     process.exit(1);
   }
 
   // STEP 6 — PROJECT CONFIGURATION
-  let setupCmd = '';
+  let setupCmd = "";
   let extraFiles = [];
   let sshAlias = null;
   let sshKeyPath = null;
   let sshPassphrase = null;
   let sshPassphraseEnc = null;
-  let notes = '';
+  let notes = "";
 
-  if (duplicateChoice === 'overwrite' && existingProject) {
+  if (duplicateChoice === "overwrite" && existingProject) {
     // Show existing values, ask K/U
-    console.log('');
-    console.log('Existing configuration:');
-    console.log('  Setup command: ' + (existingProject.setup_cmd || '(none)'));
-    console.log('  SSH alias: ' + (existingProject.ssh_alias || '(none)'));
-    console.log('  SSH key: ' + (existingProject.ssh_key_path || '(none)'));
-    console.log('  Notes: ' + (existingProject.notes || '(none)'));
+    console.log("");
+    console.log("Existing configuration:");
+    console.log("  Setup command: " + (existingProject.setup_cmd || "(none)"));
+    console.log("  SSH alias: " + (existingProject.ssh_alias || "(none)"));
+    console.log("  SSH key: " + (existingProject.ssh_key_path || "(none)"));
+    console.log("  Notes: " + (existingProject.notes || "(none)"));
 
     const { keepUpdate } = await inquirer.prompt([
       {
-        type: 'list',
-        name: 'keepUpdate',
-        message: 'Keep existing or update?',
+        type: "list",
+        name: "keepUpdate",
+        message: "Keep existing or update?",
         choices: [
-          { name: 'Keep existing', value: 'keep' },
-          { name: 'Update', value: 'update' }
-        ]
-      }
+          { name: "Keep existing", value: "keep" },
+          { name: "Update", value: "update" },
+        ],
+      },
     ]);
 
-    if (keepUpdate === 'keep') {
-      setupCmd = existingProject.setup_cmd || '';
+    if (keepUpdate === "keep") {
+      setupCmd = existingProject.setup_cmd || "";
       extraFiles = existingProject.extra_files || [];
       sshAlias = existingProject.ssh_alias;
       sshKeyPath = existingProject.ssh_key_path;
       sshPassphraseEnc = existingProject.ssh_passphrase_enc;
-      notes = existingProject.notes || '';
+      notes = existingProject.notes || "";
     } else {
       // Update - ask all questions
-      const existingExtraFilePaths = (existingProject.extra_files || []).map(f => f.path);
-      const configAnswers = await askConfigQuestions(repoRoot, existingExtraFilePaths);
+      const existingExtraFilePaths = (existingProject.extra_files || []).map(
+        (f) => f.path,
+      );
+      const configAnswers = await askConfigQuestions(
+        repoRoot,
+        existingExtraFilePaths,
+      );
       setupCmd = configAnswers.setupCmd;
       extraFiles = configAnswers.extraFiles;
       sshAlias = configAnswers.sshAlias;
@@ -399,7 +483,7 @@ async function parkCommand(name) {
 
   // STEP 7 — SNAPSHOT + LETTER ASSIGNMENT
   const envRaw = readEnvFile(repoRoot);
-  const envEnc = envRaw ? encryptWithMEK(envRaw.toString('base64'), mek) : null;
+  const envEnc = envRaw ? encryptWithMEK(envRaw.toString("base64"), mek) : null;
 
   // Read extra files
   const extraFilesData = [];
@@ -407,11 +491,11 @@ async function parkCommand(name) {
     const fullPath = path.join(repoRoot, file.path);
     if (fs.existsSync(fullPath)) {
       const fileBuffer = fs.readFileSync(fullPath);
-      const fileB64 = fileBuffer.toString('base64');
+      const fileB64 = fileBuffer.toString("base64");
       const fileEnc = encryptWithMEK(fileB64, mek);
       extraFilesData.push({
         path: file.path,
-        data_enc: fileEnc
+        data_enc: fileEnc,
       });
     }
   }
@@ -420,18 +504,21 @@ async function parkCommand(name) {
   const git = simpleGit(repoRoot);
   let parkedBranch;
   try {
-    parkedBranch = (await git.raw(['symbolic-ref', '--short', 'HEAD'])).trim();
+    parkedBranch = (await git.raw(["symbolic-ref", "--short", "HEAD"])).trim();
   } catch (err) {
     parkedBranch = null;
   }
 
   // Load meta and assign letter (meta already loaded in Step 4)
   const allProjectFiles = listProjects();
-  const activeIds = allProjectFiles.map(p => p.id);
+  const activeIds = allProjectFiles.map((p) => p.id);
   const allUsedIds = [...meta.retiredIds, ...activeIds];
   // Only reuse existing ID if overwriting (duplicateChoice === 'overwrite')
   // For [N] new entry or first park, always get a new letter
-  const id = (duplicateChoice === 'overwrite' && existingProject) ? existingProject.id : getNextLetter(allUsedIds);
+  const id =
+    duplicateChoice === "overwrite" && existingProject
+      ? existingProject.id
+      : getNextLetter(allUsedIds);
 
   // Build project JSON
   const projectData = {
@@ -447,31 +534,31 @@ async function parkCommand(name) {
     notes: notes || null,
     env_enc: envEnc,
     extra_files: extraFilesData,
-    parked_at: new Date().toISOString()
+    parked_at: new Date().toISOString(),
   };
 
   // STEP 8 — DELETE CONFIRMATION FIRST (before vault push)
-  console.log('');
-  console.log('This will permanently delete ' + repoRoot + '.');
+  console.log("");
+  console.log("This will permanently delete " + repoRoot + ".");
 
   const { confirmDelete } = await inquirer.prompt([
     {
-      type: 'input',
-      name: 'confirmDelete',
-      message: 'Type "' + projectName + '" to confirm deletion:'
-    }
+      type: "input",
+      name: "confirmDelete",
+      message: 'Type "' + projectName + '" to confirm deletion:',
+    },
   ]);
 
   if (confirmDelete !== projectName) {
-    console.log('Cancelled. Nothing was pushed to vault.');
+    console.log("Cancelled. Nothing was pushed to vault.");
     // Rollback: remove the saved project file if it exists (in case of overwrite)
     if (existingProject) {
       // Restore the original project data
       saveProject(existingProject.id, existingProject);
     } else {
       // Just delete the newly created project file
-      const projectsDir = require('../lib/vault').vaultPath + '/projects';
-      const projectFile = path.join(projectsDir, id + '.json');
+      const projectsDir = require("../lib/vault").vaultPath + "/projects";
+      const projectFile = path.join(projectsDir, id + ".json");
       if (fs.existsSync(projectFile)) {
         fs.unlinkSync(projectFile);
       }
@@ -481,10 +568,12 @@ async function parkCommand(name) {
 
   // Only push to vault AFTER successful confirmation
   saveProject(id, projectData);
-  const pushResult = await pushVault('park: add project ' + projectName);
+  const pushResult = await pushVault("park: add project " + projectName);
 
   if (pushResult === false) {
-    console.log('Vault push failed. Your local folder is safe. Check connection and try again.');
+    console.log(
+      "Vault push failed. Your local folder is safe. Check connection and try again.",
+    );
     return;
   }
 
@@ -500,32 +589,46 @@ async function parkCommand(name) {
   }
 
   // Print success message and cd instruction
-  console.log('\n\x1b[32m✓ Parked as [' + id + ']. Use `parking unpark ' + id + '` to restore.\x1b[0m');
-  console.log('\n\x1b[90m─────────────────────────────────────────────────\x1b[0m');
-  console.log('\x1b[33mYour terminal is still pointing at the deleted folder.\x1b[0m');
-  console.log('\x1b[33mRun this to go to the parent directory:\x1b[0m');
-  console.log('\n  \x1b[1;36mcd ' + parentDir + '\x1b[0m\n');
-  console.log('\x1b[90m─────────────────────────────────────────────────\x1b[0m\n');
+  console.log(
+    "\n\x1b[32m✓ Parked as [" +
+      id +
+      "]. Use `parking unpark " +
+      id +
+      "` to restore.\x1b[0m",
+  );
+  console.log(
+    "\n\x1b[90m─────────────────────────────────────────────────\x1b[0m",
+  );
+  console.log(
+    "\x1b[33mYour terminal is still pointing at the deleted folder.\x1b[0m",
+  );
+  console.log("\x1b[33mRun this to go to the parent directory:\x1b[0m");
+  console.log("\n  \x1b[1;36mcd " + parentDir + "\x1b[0m\n");
+  console.log(
+    "\x1b[90m─────────────────────────────────────────────────\x1b[0m\n",
+  );
 }
 
 async function askConfigQuestions(repoRoot, existingExtraFiles) {
-  let setupCmd = '';
+  let setupCmd = "";
   let firstAttempt = true;
   while (true) {
     const { setupCmdInput } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'setupCmdInput',
+        type: "input",
+        name: "setupCmdInput",
         message: firstAttempt
-          ? 'Setup command? (e.g. npm install && npm run dev, or pip install -r requirements.txt)'
-          : 'Setup command? (Use && or ; to separate commands, not comma):',
-        default: ''
-      }
+          ? "Setup command? (e.g. npm install && npm run dev, or pip install -r requirements.txt)"
+          : "Setup command? (Use && or ; to separate commands, not comma):",
+        default: "",
+      },
     ]);
     setupCmd = setupCmdInput;
 
-    if (setupCmd && setupCmd.includes(',')) {
-      console.log('\x1b[33m⚠ Note: Use "&&" or ";" to separate commands, not comma.\x1b[0m');
+    if (setupCmd && setupCmd.includes(",")) {
+      console.log(
+        '\x1b[33m⚠ Note: Use "&&" or ";" to separate commands, not comma.\x1b[0m',
+      );
       firstAttempt = false;
       continue;
     }
@@ -537,60 +640,58 @@ async function askConfigQuestions(repoRoot, existingExtraFiles) {
 
   // SSH alias selection
   const knownKeys = parseSshConfig();
-  const sshChoices = [
-    { name: 'None', value: 'none' }
-  ];
+  const sshChoices = [{ name: "None", value: "none" }];
 
   if (knownKeys.length > 0) {
     for (const k of knownKeys) {
       sshChoices.push({
-        name: k.alias + ' (' + k.identityFile + ')',
-        value: 'known:' + k.alias + ':' + k.identityFile
+        name: k.alias + " (" + k.identityFile + ")",
+        value: "known:" + k.alias + ":" + k.identityFile,
       });
     }
   }
-  sshChoices.push({ name: 'Custom alias', value: 'custom' });
+  sshChoices.push({ name: "Custom alias", value: "custom" });
 
   const { sshChoice } = await inquirer.prompt([
     {
-      type: 'list',
-      name: 'sshChoice',
-      message: 'SSH host alias?',
-      choices: sshChoices
-    }
+      type: "list",
+      name: "sshChoice",
+      message: "SSH host alias?",
+      choices: sshChoices,
+    },
   ]);
 
   let sshAlias = null;
   let sshKeyPath = null;
 
-  if (sshChoice.startsWith('known:')) {
-    const parts = sshChoice.split(':');
+  if (sshChoice.startsWith("known:")) {
+    const parts = sshChoice.split(":");
     sshAlias = parts[1];
     sshKeyPath = parts[2];
-  } else if (sshChoice === 'custom') {
+  } else if (sshChoice === "custom") {
     const { customAlias } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'customAlias',
-        message: 'Enter SSH alias:'
-      }
+        type: "input",
+        name: "customAlias",
+        message: "Enter SSH alias:",
+      },
     ]);
 
     const { customKeyPath } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'customKeyPath',
-        message: 'Enter the private key path for this alias:',
+        type: "input",
+        name: "customKeyPath",
+        message: "Enter the private key path for this alias:",
         validate: (input) => {
-          if (!input || input.trim() === '') {
-            return 'Key path is required';
+          if (!input || input.trim() === "") {
+            return "Key path is required";
           }
           if (!fs.existsSync(input)) {
-            return 'File does not exist';
+            return "File does not exist";
           }
           return true;
-        }
-      }
+        },
+      },
     ]);
 
     sshAlias = customAlias;
@@ -602,30 +703,31 @@ async function askConfigQuestions(repoRoot, existingExtraFiles) {
   if (sshKeyPath) {
     const { hasPassphrase } = await inquirer.prompt([
       {
-        type: 'confirm',
-        name: 'hasPassphrase',
-        message: 'Does this SSH key have a passphrase?',
-        default: false
-      }
+        type: "confirm",
+        name: "hasPassphrase",
+        message: "Does this SSH key have a passphrase?",
+        default: false,
+      },
     ]);
 
     if (hasPassphrase) {
       const { storePassphrase } = await inquirer.prompt([
         {
-          type: 'confirm',
-          name: 'storePassphrase',
-          message: 'Store passphrase encrypted in vault? (If not, you will be prompted manually on unpark)',
-          default: true
-        }
+          type: "confirm",
+          name: "storePassphrase",
+          message:
+            "Store passphrase encrypted in vault? (If not, you will be prompted manually on unpark)",
+          default: true,
+        },
       ]);
 
       if (storePassphrase) {
         const { passphrase } = await inquirer.prompt([
           {
-            type: 'password',
-            name: 'passphrase',
-            message: 'SSH key passphrase:'
-          }
+            type: "password",
+            name: "passphrase",
+            message: "SSH key passphrase:",
+          },
         ]);
         sshPassphrase = passphrase;
       }
@@ -634,11 +736,11 @@ async function askConfigQuestions(repoRoot, existingExtraFiles) {
 
   const { notes } = await inquirer.prompt([
     {
-      type: 'input',
-      name: 'notes',
-      message: 'Notes? (free text, shown after unpark)',
-      default: ''
-    }
+      type: "input",
+      name: "notes",
+      message: "Notes? (free text, shown after unpark)",
+      default: "",
+    },
   ]);
 
   return {
@@ -647,46 +749,55 @@ async function askConfigQuestions(repoRoot, existingExtraFiles) {
     sshAlias,
     sshKeyPath,
     sshPassphrase,
-    notes
+    notes,
   };
 }
 
 async function askExtraFiles(repoRoot, existingExtraFiles) {
   // Step 1: Scan gitignore
-  process.stdout.write('\nScanning .gitignore for extra files to preserve...\n');
+  process.stdout.write(
+    "\nScanning .gitignore for extra files to preserve...\n",
+  );
   const { files, warnings } = await getGitignoreFiles(repoRoot);
 
   // Step 2: If warnings exist, show them
   for (const w of warnings) {
-    console.log('\x1b[33m⚠ File is large (>500KB), parking will warn: ' + w + '\x1b[0m');
+    console.log(
+      "\x1b[33m⚠ File is large (>500KB), parking will warn: " + w + "\x1b[0m",
+    );
   }
 
   // Step 3: Build checkbox choices
-  const choices = files.map(f => {
-    const isEnv = f === '.env' || f.startsWith('.env.');
+  const choices = files.map((f) => {
+    const isEnv = f === ".env" || f.startsWith(".env.");
     const wasChecked = existingExtraFiles.includes(f);
     return {
       name: f,
       value: f,
-      checked: isEnv || wasChecked
+      checked: isEnv || wasChecked,
     };
   });
 
   // Step 4: Handle cases
   if (choices.length === 0) {
     // No gitignored files found on disk
-    console.log('\x1b[90mNo .gitignore\'d files found on disk.\x1b[0m');
-    console.log('Enter paths manually (comma-separated) or press Enter to skip:');
+    console.log("\x1b[90mNo .gitignore'd files found on disk.\x1b[0m");
+    console.log(
+      "Enter paths manually (comma-separated) or press Enter to skip:",
+    );
     const { manual } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'manual',
-        message: 'Extra files (optional):',
-        default: ''
-      }
+        type: "input",
+        name: "manual",
+        message: "Extra files (optional):",
+        default: "",
+      },
     ]);
     if (!manual.trim()) return [];
-    const manualPaths = manual.split(',').map(s => s.trim()).filter(Boolean);
+    const manualPaths = manual
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
     // Validate each path
     const validPaths = [];
@@ -695,47 +806,60 @@ async function askExtraFiles(repoRoot, existingExtraFiles) {
         validateRelativePath(p, repoRoot);
         validPaths.push({ path: p });
       } catch (e) {
-        console.log('\x1b[33m⚠ Skipping invalid path: ' + p + ' (' + e.message + ')\x1b[0m');
+        console.log(
+          "\x1b[33m⚠ Skipping invalid path: " +
+            p +
+            " (" +
+            e.message +
+            ")\x1b[0m",
+        );
       }
     }
     return validPaths;
   }
 
   // Step 5: Show checkbox list
-  console.log('\nSelect extra files to preserve (space to toggle, enter to confirm):');
-  console.log('\x1b[90m.env files are pre-selected. Others are unchecked by default.\x1b[0m\n');
+  console.log(
+    "\nSelect extra files to preserve (space to toggle, enter to confirm):",
+  );
+  console.log(
+    "\x1b[90m.env files are pre-selected. Others are unchecked by default.\x1b[0m\n",
+  );
 
   const { selected } = await inquirer.prompt([
     {
-      type: 'checkbox',
-      name: 'selected',
-      message: 'Extra files to preserve:',
+      type: "checkbox",
+      name: "selected",
+      message: "Extra files to preserve:",
       choices: choices,
-      pageSize: 15
-    }
+      pageSize: 15,
+    },
   ]);
 
   // Step 6: Also offer manual addition
   const { addMore } = await inquirer.prompt([
     {
-      type: 'confirm',
-      name: 'addMore',
-      message: 'Add any files not shown above?',
-      default: false
-    }
+      type: "confirm",
+      name: "addMore",
+      message: "Add any files not shown above?",
+      default: false,
+    },
   ]);
 
   let manualAdditions = [];
   if (addMore) {
     const { manual } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'manual',
-        message: 'Enter paths (comma-separated):',
-        default: ''
-      }
+        type: "input",
+        name: "manual",
+        message: "Enter paths (comma-separated):",
+        default: "",
+      },
     ]);
-    manualAdditions = manual.split(',').map(s => s.trim()).filter(Boolean);
+    manualAdditions = manual
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
 
   // Step 7: Combine, deduplicate, validate all paths
@@ -747,7 +871,9 @@ async function askExtraFiles(repoRoot, existingExtraFiles) {
       validateRelativePath(p, repoRoot);
       validPaths.push({ path: p });
     } catch (e) {
-      console.log('\x1b[33m⚠ Skipping invalid path: ' + p + ' (' + e.message + ')\x1b[0m');
+      console.log(
+        "\x1b[33m⚠ Skipping invalid path: " + p + " (" + e.message + ")\x1b[0m",
+      );
     }
   }
 

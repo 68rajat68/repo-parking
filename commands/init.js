@@ -1,11 +1,18 @@
-const inquirer = require('inquirer');
-const simpleGit = require('simple-git');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const { loadConfig, saveConfig, configExists } = require('../lib/config');
-const { encrypt, generateMEK, wrapMEK, wrapMEKWithRecoveryKey, generateRecoveryKey, generateVerifier } = require('../lib/crypto');
-const spinner = require('../lib/spinner');
+const inquirer = require("inquirer");
+const simpleGit = require("simple-git");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const { loadConfig, saveConfig, configExists } = require("../lib/config");
+const {
+  encrypt,
+  generateMEK,
+  wrapMEK,
+  wrapMEKWithRecoveryKey,
+  generateRecoveryKey,
+  generateVerifier,
+} = require("../lib/crypto");
+const spinner = require("../lib/spinner");
 
 async function initCommand() {
   let config = loadConfig();
@@ -14,15 +21,16 @@ async function initCommand() {
   if (existingInit) {
     const { reinit } = await inquirer.prompt([
       {
-        type: 'confirm',
-        name: 'reinit',
-        message: 'Already initialized. Re-initialize? This will delete and re-clone your local vault copy.',
-        default: false
-      }
+        type: "confirm",
+        name: "reinit",
+        message:
+          "Already initialized. Re-initialize? This will delete and re-clone your local vault copy.",
+        default: false,
+      },
     ]);
 
     if (!reinit) {
-      console.log('Cancelled.');
+      console.log("Cancelled.");
       return;
     }
 
@@ -35,31 +43,31 @@ async function initCommand() {
 
   const { vaultRemote } = await inquirer.prompt([
     {
-      type: 'input',
-      name: 'vaultRemote',
-      message: 'Vault repo remote URL:',
+      type: "input",
+      name: "vaultRemote",
+      message: "Vault repo remote URL:",
       validate: (input) => {
-        if (!input || input.trim() === '') {
-          return 'Vault remote URL is required';
+        if (!input || input.trim() === "") {
+          return "Vault remote URL is required";
         }
         return true;
-      }
-    }
+      },
+    },
   ]);
 
   const { masterPassword } = await inquirer.prompt([
     {
-      type: 'password',
-      name: 'masterPassword',
-      message: 'Master password (never stored):',
-      mask: '*',
+      type: "password",
+      name: "masterPassword",
+      message: "Master password (never stored):",
+      mask: "*",
       validate: (input) => {
-        if (!input || input.trim() === '') {
-          return 'Master password is required';
+        if (!input || input.trim() === "") {
+          return "Master password is required";
         }
         return true;
-      }
-    }
+      },
+    },
   ]);
 
   // Generate MEK and recovery key
@@ -67,7 +75,7 @@ async function initCommand() {
   const recoveryKey = generateRecoveryKey();
 
   // Clone vault repo
-  const vaultPath = path.join(os.homedir(), '.repo-parking', 'vault');
+  const vaultPath = path.join(os.homedir(), ".repo-parking", "vault");
 
   // Ensure parent directory exists
   const vaultParent = path.dirname(vaultPath);
@@ -75,12 +83,12 @@ async function initCommand() {
     fs.mkdirSync(vaultParent, { recursive: true });
   }
 
-  spinner.start('Cloning vault repository');
+  spinner.start("Cloning vault repository");
 
   // Detect the default branch before cloning
-  let vaultBranch = 'main';
+  let vaultBranch = "main";
   try {
-    const remoteInfo = await simpleGit().listRemote([vaultRemote, '--symref']);
+    const remoteInfo = await simpleGit().listRemote([vaultRemote, "--symref"]);
     const match = remoteInfo.match(/^ref: refs\/heads\/(\S+)\tHEAD/m);
     if (match) {
       vaultBranch = match[1];
@@ -91,15 +99,19 @@ async function initCommand() {
 
   try {
     await simpleGit().clone(vaultRemote, vaultPath);
-    spinner.succeed('Vault cloned');
+    spinner.succeed("Vault cloned");
   } catch (cloneErr) {
-    spinner.fail('Clone failed');
-    if (cloneErr.message && cloneErr.message.includes('Repository not found')) {
-      console.error('\n\x1b[31mERROR: Repository not found.\x1b[0m');
-      console.error('Make sure:');
-      console.error('  1. The vault repository exists and is accessible');
-      console.error('  2. You have proper SSH access (run: ssh -T git@github.com)');
-      console.error('  3. If using SSH alias, use the full URL like git@github-68rajat68:user/repo.git');
+    spinner.fail("Clone failed");
+    if (cloneErr.message && cloneErr.message.includes("Repository not found")) {
+      console.error("\n\x1b[31mERROR: Repository not found.\x1b[0m");
+      console.error("Make sure:");
+      console.error("  1. The vault repository exists and is accessible");
+      console.error(
+        "  2. You have proper SSH access (run: ssh -T git@github.com)",
+      );
+      console.error(
+        "  3. If using SSH alias, use the full URL like git@github-68rajat68:user/repo.git",
+      );
       return;
     }
     throw cloneErr;
@@ -108,8 +120,12 @@ async function initCommand() {
   // Check if repo has any commits (empty repo = unborn HEAD)
   let isEmptyRepo = false;
   try {
-    const commitCount = await simpleGit(vaultPath).raw(['rev-list', '--count', 'HEAD']);
-    isEmptyRepo = commitCount === '0' || commitCount === '';
+    const commitCount = await simpleGit(vaultPath).raw([
+      "rev-list",
+      "--count",
+      "HEAD",
+    ]);
+    isEmptyRepo = commitCount === "0" || commitCount === "";
   } catch (err) {
     isEmptyRepo = true; // If we can't get commit count, assume empty
   }
@@ -118,7 +134,7 @@ async function initCommand() {
   // For repos with commits, try to checkout the detected/default branch
   if (!isEmptyRepo) {
     let checkoutSuccess = false;
-    for (const branch of [vaultBranch, 'main', 'master']) {
+    for (const branch of [vaultBranch, "main", "master"]) {
       try {
         await simpleGit(vaultPath).checkout([branch]);
         vaultBranch = branch;
@@ -130,8 +146,8 @@ async function initCommand() {
     }
 
     if (!checkoutSuccess) {
-      console.error('\n\x1b[31mERROR: Could not checkout any branch.\x1b[0m');
-      console.error('Make sure your vault repository has at least one commit.');
+      console.error("\n\x1b[31mERROR: Could not checkout any branch.\x1b[0m");
+      console.error("Make sure your vault repository has at least one commit.");
       fs.rmSync(vaultPath, { recursive: true, force: true });
       return;
     }
@@ -139,12 +155,12 @@ async function initCommand() {
   // For empty repos, HEAD is on unborn branch - we proceed to create files and bootstrap
 
   // Create projects directory and meta.json if needed
-  const projectsDir = path.join(vaultPath, 'projects');
+  const projectsDir = path.join(vaultPath, "projects");
   if (!fs.existsSync(projectsDir)) {
     fs.mkdirSync(projectsDir, { recursive: true });
   }
 
-  const metaPath = path.join(vaultPath, 'meta.json');
+  const metaPath = path.join(vaultPath, "meta.json");
   let metaCreated = false;
   if (!fs.existsSync(metaPath)) {
     const mek_wrapped_password = wrapMEK(mek, masterPassword);
@@ -154,44 +170,47 @@ async function initCommand() {
       retiredIds: [],
       mek_wrapped_password,
       mek_wrapped_recovery,
-      verifier
+      verifier,
     };
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
     metaCreated = true;
   }
 
   // If any files were created, stage and commit BEFORE pushing
-  if (metaCreated || !fs.existsSync(path.join(vaultPath, '.git', 'refs', 'heads', vaultBranch))) {
+  if (
+    metaCreated ||
+    !fs.existsSync(path.join(vaultPath, ".git", "refs", "heads", vaultBranch))
+  ) {
     const git = simpleGit(vaultPath);
-    await git.add('-A');
+    await git.add("-A");
     const status = await git.status();
     if (status.files.length > 0) {
-      await git.commit('init: bootstrap vault');
+      await git.commit("init: bootstrap vault");
     }
 
     // P1-u fix: check isFirstCommit for rollback
     try {
-      const commitCount = await git.raw(['rev-list', '--count', 'HEAD']);
-      const isFirstCommit = commitCount === '1';
+      const commitCount = await git.raw(["rev-list", "--count", "HEAD"]);
+      const isFirstCommit = commitCount === "1";
 
-      spinner.start('Pushing to vault');
+      spinner.start("Pushing to vault");
       try {
-        await git.push(['--set-upstream', 'origin', vaultBranch]);
-        spinner.succeed('Pushed to vault');
+        await git.push(["--set-upstream", "origin", vaultBranch]);
+        spinner.succeed("Pushed to vault");
       } catch (pushErr) {
-        spinner.fail('Push failed');
+        spinner.fail("Push failed");
         if (isFirstCommit) {
-          const emptyTreeSha = await git.mktree(['-t', 'tree']);
+          const emptyTreeSha = await git.mktree(["-t", "tree"]);
           const branchName = await git.branchLocal().current;
-          await git.updateRef(['-d', `refs/heads/${branchName}`]);
+          await git.updateRef(["-d", `refs/heads/${branchName}`]);
           await git.reset([emptyTreeSha]);
         } else {
-          await git.reset(['--hard', 'HEAD~1']);
+          await git.reset(["--hard", "HEAD~1"]);
         }
         return;
       }
     } catch (err) {
-      console.error('Failed to push to vault:', err.message);
+      console.error("Failed to push to vault:", err.message);
       return;
     }
   }
@@ -200,50 +219,84 @@ async function initCommand() {
   const newConfig = {
     vaultRemote: vaultRemote,
     vaultPath: vaultPath,
-    vaultBranch: vaultBranch
+    vaultBranch: vaultBranch,
   };
   saveConfig(newConfig);
 
   // Show recovery key and require confirmation
-  console.log('');
-  console.log('\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0');
-  console.log('\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0');
-  console.log('\x1b[33m║                                                      ║\x1b[0');
-  console.log('\x1b[33m║  ' + recoveryKey.display + '      ║\x1b[0');
-  console.log('\x1b[33m║                                                      ║\x1b[0');
-  console.log('\x1b[33m║  If you forget your master password, this key        ║\x1b[0');
-  console.log('\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0');
-  console.log('\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0');
-  console.log('\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0');
-  console.log('');
+  console.log("");
+  console.log(
+    "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0",
+  );
+  console.log(
+    "\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0",
+  );
+  console.log(
+    "\x1b[33m║                                                      ║\x1b[0",
+  );
+  console.log("\x1b[33m║  " + recoveryKey.display + "      ║\x1b[0");
+  console.log(
+    "\x1b[33m║                                                      ║\x1b[0",
+  );
+  console.log(
+    "\x1b[33m║  If you forget your master password, this key        ║\x1b[0",
+  );
+  console.log(
+    "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0",
+  );
+  console.log(
+    "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0",
+  );
+  console.log(
+    "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0",
+  );
+  console.log("");
 
   let keyConfirmed = false;
   while (!keyConfirmed) {
     const { savedKey } = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'savedKey',
-        message: 'Have you saved your recovery key? [y/N]'
-      }
+        type: "input",
+        name: "savedKey",
+        message: "Have you saved your recovery key? [y/N]",
+      },
     ]);
-    if (savedKey.toLowerCase() === 'y') {
+    if (savedKey.toLowerCase() === "y") {
       keyConfirmed = true;
     } else {
-      console.log('\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0');
-      console.log('\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0');
-      console.log('\x1b[33m║                                                      ║\x1b[0');
-      console.log('\x1b[33m║  ' + recoveryKey.display + '      ║\x1b[0m');
-      console.log('\x1b[33m║                                                      ║\x1b[0');
-      console.log('\x1b[33m║  If you forget your master password, this key        ║\x1b[0');
-      console.log('\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0');
-      console.log('\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0');
-      console.log('\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0');
-      console.log('');
+      console.log(
+        "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0",
+      );
+      console.log(
+        "\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0",
+      );
+      console.log(
+        "\x1b[33m║                                                      ║\x1b[0",
+      );
+      console.log("\x1b[33m║  " + recoveryKey.display + "      ║\x1b[0m");
+      console.log(
+        "\x1b[33m║                                                      ║\x1b[0",
+      );
+      console.log(
+        "\x1b[33m║  If you forget your master password, this key        ║\x1b[0",
+      );
+      console.log(
+        "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0",
+      );
+      console.log(
+        "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0",
+      );
+      console.log(
+        "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0",
+      );
+      console.log("");
     }
   }
 
-  console.log('\x1b[33m\x1b[1m⚠ Your master password cannot be recovered. Store it safely — it is never saved anywhere.\x1b[0m');
-  console.log('Initialized successfully.');
+  console.log(
+    "\x1b[33m\x1b[1m⚠ Your master password cannot be recovered. Store it safely — it is never saved anywhere.\x1b[0m",
+  );
+  console.log("Initialized successfully.");
 }
 
 module.exports = initCommand;

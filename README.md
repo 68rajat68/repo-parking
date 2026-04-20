@@ -106,6 +106,7 @@ parking change-password
 ```
 
 You'll be asked for:
+
 - Current master password
 - New master password
 - Whether to generate a new recovery key
@@ -119,6 +120,7 @@ parking recover
 ```
 
 You'll be asked for:
+
 - Recovery key (format: `xxxx-xxxx-xxxx-xxxx-xxxx`)
 - New master password
 - Whether to generate a new recovery key
@@ -130,6 +132,7 @@ You'll be asked for:
 ### Recovery Key
 
 During `parking init`, a recovery key is generated and shown ONCE. This key:
+
 - Is stored encrypted in your vault
 - Can reset your password if forgotten
 - Is the ONLY way to recover if you forget your password
@@ -144,6 +147,7 @@ The setup command stored in your vault runs on unpark. Since your vault is your 
 ### Master Password
 
 Your master password is never saved anywhere. The password wraps a master encryption key (MEK) which encrypts all vault data. This architecture allows:
+
 - Password changes without re-encrypting all data
 - Password recovery via recovery key
 
