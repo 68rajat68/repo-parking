@@ -29,6 +29,7 @@ parking init
 ```
 
 You'll be asked for:
+
 - Vault repo remote URL
 - Master password (never stored - memorize this!)
 
@@ -48,6 +49,7 @@ parking park my-app
 ```
 
 You'll be asked about:
+
 - Setup command (e.g., `npm install`)
 - Extra files to preserve (beyond .env)
 - SSH alias for this repo
@@ -118,6 +120,7 @@ When parking, you can associate an SSH alias. On unpark, `parking` will look up 
 This is a warning, not a fatal error. The clone will still proceed. You may be prompted for your SSH passphrase during the clone.
 
 To fix:
+
 1. Ensure your SSH key is in your agent: `ssh-add ~/.ssh/id_ed25519`
 2. Or pre-load before running unpark: `ssh-add /path/to/key`
 

@@ -2,10 +2,10 @@
   "name": "repo-parking",
   "version": "1.0.0",
   "description": "Park and unpark git repos to save disk space",
+  "main": "bin/parking.js",
   "bin": {
     "parking": "./bin/parking.js"
   },
-  "main": "bin/parking.js",
   "engines": {
     "node": ">=18"
   },
@@ -14,5 +14,20 @@
     "inquirer": "^8.0.0",
     "simple-git": "latest"
   },
-  "license": "MIT"
+  "author": "Rajat Jangid <68rajat68@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/68rajat68/repo-parking.git"
+  },
+  "keywords": [
+    "git",
+    "repo",
+    "repo-parking",
+    "safe",
+    "park",
+    "unpark",
+    "disk-space",
+    "vault"
+  ]
 }
