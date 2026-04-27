@@ -32,6 +32,7 @@ const listCommand = require("../commands/list");
 const statusCommand = require("../commands/status");
 const forgetCommand = require("../commands/forget");
 const parkCommand = require("../commands/park");
+const { parkBundleCommand } = require("../commands/park-bundle");
 const unparkCommand = require("../commands/unpark");
 const changePasswordCommand = require("../commands/change-password");
 const recoverCommand = require("../commands/recover");
@@ -83,14 +84,19 @@ program
 
 program
   .command("park <name>")
-  .description("Park a git repository")
-  .action((name) => {
+  .description("Park a git repository (use -f to park selected files/folders)")
+  .option("-f, --files", "Park selected files or folders from disk (no git repo)")
+  .action(async (name, options) => {
     const config = loadConfig();
     if (!config) {
       console.error("Not initialized. Run `parking init` first.");
       process.exit(1);
     }
-    parkCommand(name);
+    if (options.files) {
+      await parkBundleCommand(name);
+    } else {
+      await parkCommand(name);
+    }
   });
 
 program

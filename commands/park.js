@@ -4,7 +4,7 @@ const fs = require("fs");
 const simpleGit = require("simple-git");
 const {
   ensureVaultExists,
-  listProjects,
+  listAllParked,
   loadMeta,
   saveMeta,
   saveProject,
@@ -68,11 +68,11 @@ async function parkCommand(name) {
   }
 
   // STEP 1 — RESOLVE REPO ROOT
-  if (!isGitRepo()) {
+  if (!(await isGitRepo())) {
     console.error("Not inside a git repository.");
     return;
   }
-  if (!hasCommits()) {
+  if (!(await hasCommits())) {
     console.error("No commits yet. Make at least one commit.");
     return;
   }
@@ -112,10 +112,12 @@ async function parkCommand(name) {
     hasUpstream = false;
 
     const git = simpleGit(repoRoot);
-    remoteUrl = git.remoteGetUrl([remoteName]).trim();
+    remoteUrl = (await git.raw(["remote", "get-url", remoteName])).trim();
 
     try {
-      remotePushUrl = git.config(["remote." + remoteName + ".pushurl"]).trim();
+      remotePushUrl = (
+        await git.raw(["config", "remote." + remoteName + ".pushurl"])
+      ).trim();
       if (remotePushUrl === "") {
         remotePushUrl = undefined;
       }
@@ -158,10 +160,19 @@ async function parkCommand(name) {
     return;
   }
 
-  const allProjects = listProjects();
-  const nameMatches = allProjects.filter((p) => p.name === name);
-  const remoteMatches = allProjects.filter((p) => p.remote === remoteUrl);
-  const duplicates = allProjects.filter(
+  const allProjects = listAllParked();
+  const reposOnly = allProjects.filter((p) => (p.kind || "repo") !== "bundle");
+  if (allProjects.some((p) => p.kind === "bundle" && p.name === name)) {
+    console.error(
+      'Name "' +
+        name +
+        '" is already used by a parked files/folder entry. Choose another name.',
+    );
+    return;
+  }
+  const nameMatches = reposOnly.filter((p) => p.name === name);
+  const remoteMatches = reposOnly.filter((p) => p.remote === remoteUrl);
+  const duplicates = reposOnly.filter(
     (p) => p.name === name && p.remote === remoteUrl,
   );
 
@@ -248,7 +259,7 @@ async function parkCommand(name) {
           if (/^[A-Z]+$/.test(input)) {
             return "Names cannot be all uppercase letters (reserved for IDs). Try: my-API, api-server, etc.";
           }
-          const allProjectsNow = listProjects();
+          const allProjectsNow = listAllParked();
           if (allProjectsNow.some((p) => p.name === input)) {
             return "A project with this name already exists.";
           }
@@ -287,8 +298,8 @@ async function parkCommand(name) {
   }
 
   // STEP 5 — GIT SAFETY CHECK
-  const uncommittedFiles = getUncommittedFiles(repoRoot);
-  const unpushedCommits = getUnpushedCommits(
+  const uncommittedFiles = await getUncommittedFiles(repoRoot);
+  const unpushedCommits = await getUnpushedCommits(
     remoteName,
     trackingBranch,
     hasUpstream,
@@ -328,7 +339,7 @@ async function parkCommand(name) {
       },
     ]);
 
-    const commitResult = commitAndPush(
+    const commitResult = await commitAndPush(
       commitMessage,
       remoteName,
       trackingBranch,
@@ -341,7 +352,7 @@ async function parkCommand(name) {
     }
   } else if (unpushedCommits.length > 0) {
     // Clean working tree with unpushed commits
-    const pushResult = pushOnly(
+    const pushResult = await pushOnly(
       remoteName,
       trackingBranch,
       hasUpstream,
@@ -379,7 +390,7 @@ async function parkCommand(name) {
       },
     ]);
 
-    const commitResult = commitAndPush(
+    const commitResult = await commitAndPush(
       commitMessage,
       remoteName,
       trackingBranch,
@@ -510,7 +521,7 @@ async function parkCommand(name) {
   }
 
   // Load meta and assign letter (meta already loaded in Step 4)
-  const allProjectFiles = listProjects();
+  const allProjectFiles = listAllParked();
   const activeIds = allProjectFiles.map((p) => p.id);
   const allUsedIds = [...meta.retiredIds, ...activeIds];
   // Only reuse existing ID if overwriting (duplicateChoice === 'overwrite')

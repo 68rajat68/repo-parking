@@ -3,7 +3,12 @@ const path = require("path");
 const fs = require("fs");
 const { spawnSync } = require("child_process");
 const simpleGit = require("simple-git");
-const { ensureVaultExists, loadProject, loadMeta } = require("../lib/vault");
+const {
+  ensureVaultExists,
+  loadProject,
+  loadMeta,
+  bundlePayloadPath,
+} = require("../lib/vault");
 const { cloneRepo } = require("../lib/git");
 const { parseSshConfig, addSshKey } = require("../lib/ssh");
 const { writeEnvFile } = require("../lib/env");
@@ -12,8 +17,10 @@ const {
   decrypt,
   unwrapMEK,
   decryptWithMEK,
+  decryptBufferWithMEK,
   generateVerifier,
 } = require("../lib/crypto");
+const { extractTarBuffer } = require("../lib/bundle");
 const spinner = require("../lib/spinner");
 
 async function unparkCommand(nameOrLetter) {
@@ -40,9 +47,10 @@ async function unparkCommand(nameOrLetter) {
     return;
   }
 
+  const isBundle = project.kind === "bundle";
   const cloneTarget = path.join(process.cwd(), project.name);
 
-  // STEP 3 — CHECK IF CLONE TARGET EXISTS
+  // STEP 3 — CHECK IF RESTORE TARGET EXISTS
   let overwriteConfirmed = false;
   if (fs.existsSync(cloneTarget)) {
     const { overwriteAction } = await inquirer.prompt([
@@ -51,7 +59,12 @@ async function unparkCommand(nameOrLetter) {
         name: "overwriteAction",
         message: cloneTarget + " already exists. What to do?",
         choices: [
-          { name: "Delete existing and re-clone", value: "overwrite" },
+          {
+            name: isBundle
+              ? "Delete existing and restore here"
+              : "Delete existing and re-clone",
+            value: "overwrite",
+          },
           { name: "Cancel", value: "cancel" },
         ],
       },
@@ -62,6 +75,14 @@ async function unparkCommand(nameOrLetter) {
       return;
     }
     overwriteConfirmed = true;
+  }
+
+  const metaEarly = loadMeta();
+  if (isBundle && !metaEarly.mek_wrapped_password) {
+    console.error(
+      "File/folder bundles require a vault initialized with a master encryption key (MEK).",
+    );
+    return;
   }
 
   // STEP 2 — DECRYPT (password prompt + MEK unwrap)
@@ -117,6 +138,70 @@ async function unparkCommand(nameOrLetter) {
       }
     } catch (err) {
       console.error("Incorrect master password.");
+      return;
+    }
+
+    if (isBundle) {
+      const payloadPath = bundlePayloadPath(project.id);
+      if (!fs.existsSync(payloadPath)) {
+        console.error("Bundle payload missing in vault:", payloadPath);
+        return;
+      }
+      let encBuf;
+      try {
+        encBuf = fs.readFileSync(payloadPath);
+      } catch (err) {
+        console.error("Could not read bundle payload:", err.message);
+        return;
+      }
+      let tarBuf;
+      try {
+        tarBuf = decryptBufferWithMEK(encBuf, mek);
+      } catch (err) {
+        console.error("Incorrect master password or corrupted bundle.");
+        return;
+      }
+
+      let restoreRoot;
+      let tmpDir = null;
+      if (overwriteConfirmed) {
+        tmpDir = path.join(
+          path.dirname(cloneTarget),
+          ".parking-tmp-" + Date.now(),
+        );
+      }
+      const extractDest = tmpDir || cloneTarget;
+      fs.mkdirSync(extractDest, { recursive: true });
+
+      try {
+        extractTarBuffer(tarBuf, extractDest);
+      } catch (err) {
+        console.error("Failed to extract bundle:", err.message);
+        if (tmpDir && fs.existsSync(tmpDir)) {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+        return;
+      }
+
+      if (overwriteConfirmed && tmpDir) {
+        if (fs.existsSync(cloneTarget)) {
+          fs.rmSync(cloneTarget, { recursive: true, force: true });
+        }
+        fs.renameSync(tmpDir, cloneTarget);
+      }
+
+      if (project.notes) {
+        console.log("");
+        console.log("--- Notes ---");
+        console.log(project.notes);
+      }
+
+      console.log("");
+      console.log(
+        "Restored files/folders to " +
+          path.join(process.cwd(), project.name) +
+          ".",
+      );
       return;
     }
   } else {
@@ -203,7 +288,9 @@ async function unparkCommand(nameOrLetter) {
 
   // STEP 5 — RESTORE PUSH URL
   if (project.remote_push_url) {
-    simpleGit(restoreRoot).remoteSetUrl([
+    await simpleGit(restoreRoot).raw([
+      "remote",
+      "set-url",
       "--push",
       "origin",
       project.remote_push_url,

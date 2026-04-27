@@ -1,11 +1,17 @@
 const inquirer = require("inquirer");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 const {
   ensureVaultExists,
   loadProject,
   deleteProject,
+  deleteBundle,
   loadMeta,
   saveMeta,
   pushVault,
+  vaultPath,
+  isBundleEntry,
 } = require("../lib/vault");
 
 async function forgetCommand(nameOrLetter) {
@@ -27,21 +33,27 @@ async function forgetCommand(nameOrLetter) {
   if (!project) {
     console.error("Project not found:", nameOrLetter);
     console.log("");
-    console.log("Run \x1b[36mparking list\x1b[0m to see all parked projects.");
+    console.log("Run \x1b[36mparking list\x1b[0m to see all parked entries.");
     return;
   }
 
+  const bundle = isBundleEntry(project);
+
   console.log("");
-  console.log("Project to forget:");
+  console.log(bundle ? "Bundle to forget:" : "Project to forget:");
   console.log("  Letter: " + project.id);
   console.log("  Name:   " + project.name);
-  console.log("  Remote: " + project.remote);
+  if (!bundle) {
+    console.log("  Remote: " + project.remote);
+  }
   console.log("");
   console.log(
-    "This does NOT delete your GitHub repo. Only removes the vault entry.",
+    bundle
+      ? "This removes the encrypted files from your vault only."
+      : "This does NOT delete your GitHub repo. Only removes the vault entry.",
   );
   console.log(
-    "\x1b[33m⚠ If you have not unparked this project recently, you will lose access to its .env and extra files.\x1b[0m",
+    "\x1b[33m⚠ If you have not unparked recently, you will lose access to this data.\x1b[0m",
   );
 
   const { confirmName } = await inquirer.prompt([
@@ -63,43 +75,78 @@ async function forgetCommand(nameOrLetter) {
     return;
   }
 
-  // Save current state for rollback
-  const fs = require("fs");
-  const path = require("path");
-  const { vaultPath } = require("../lib/vault");
-  const projectDataPath = path.join(
-    vaultPath,
-    "projects",
-    project.id + ".json",
-  );
-  let projectData = null;
+  const entryPath = bundle
+    ? path.join(vaultPath, "bundles", project.id + ".json")
+    : path.join(vaultPath, "projects", project.id + ".json");
+
+  let entryBackup = null;
+  let bundlePayloadBackupDir = null;
 
   try {
-    projectData = fs.readFileSync(projectDataPath, "utf8");
+    if (fs.existsSync(entryPath)) {
+      entryBackup = fs.readFileSync(entryPath, "utf8");
+    }
+    if (bundle) {
+      const bundleDataDir = path.join(vaultPath, "bundles", project.id);
+      if (fs.existsSync(bundleDataDir)) {
+        bundlePayloadBackupDir = path.join(
+          os.tmpdir(),
+          "parking-forget-" + project.id + "-" + Date.now(),
+        );
+        fs.cpSync(bundleDataDir, bundlePayloadBackupDir, { recursive: true });
+      }
+    }
   } catch (err) {
-    projectData = null;
+    entryBackup = null;
+    bundlePayloadBackupDir = null;
   }
 
   const originalMeta = loadMeta();
 
-  // Make local changes
-  deleteProject(project.id);
-  const newMeta = { retiredIds: [...originalMeta.retiredIds, project.id] };
+  if (bundle) {
+    deleteBundle(project.id);
+  } else {
+    deleteProject(project.id);
+  }
+  const newMeta = { ...originalMeta, retiredIds: [...(originalMeta.retiredIds || []), project.id] };
   saveMeta(newMeta);
 
-  // Attempt push
-  const success = await pushVault("forget: remove project " + project.name);
+  const success = await pushVault(
+    (bundle ? "forget: remove bundle " : "forget: remove project ") +
+      project.name,
+  );
 
   if (!success) {
-    // ROLLBACK — restore both files
-    if (projectData) {
-      fs.writeFileSync(projectDataPath, projectData);
+    if (entryBackup) {
+      fs.writeFileSync(entryPath, entryBackup);
+    }
+    if (bundle && bundlePayloadBackupDir) {
+      const restoreDir = path.join(vaultPath, "bundles", project.id);
+      try {
+        fs.mkdirSync(path.dirname(restoreDir), { recursive: true });
+        fs.cpSync(bundlePayloadBackupDir, restoreDir, { recursive: true });
+      } catch (e) {
+        /* best effort */
+      }
+      try {
+        fs.rmSync(bundlePayloadBackupDir, { recursive: true, force: true });
+      } catch (e) {
+        /* ignore */
+      }
     }
     saveMeta(originalMeta);
     console.log(
       "Could not reach vault. No changes were made. Try again when online.",
     );
     return;
+  }
+
+  if (bundlePayloadBackupDir) {
+    try {
+      fs.rmSync(bundlePayloadBackupDir, { recursive: true, force: true });
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   console.log(

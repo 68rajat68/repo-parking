@@ -122,29 +122,29 @@ async function recoverCommand() {
     // Show new recovery key
     console.log("");
     console.log(
-      "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0",
+      "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0m",
     );
     console.log(
-      "\x1b[33m║           SAVE YOUR NEW RECOVERY KEY                 ║\x1b[0",
+      "\x1b[33m║           SAVE YOUR NEW RECOVERY KEY                 ║\x1b[0m",
     );
     console.log(
-      "\x1b[33m║                                                      ║\x1b[0",
+      "\x1b[33m║                                                      ║\x1b[0m",
     );
-    console.log("\x1b[33m║  " + newRecoveryKey.display + "      ║\x1b[0");
+    console.log("\x1b[33m║  " + newRecoveryKey.display + "      ║\x1b[0m");
     console.log(
-      "\x1b[33m║                                                      ║\x1b[0",
-    );
-    console.log(
-      "\x1b[33m║  If you forget your master password, this key        ║\x1b[0",
+      "\x1b[33m║                                                      ║\x1b[0m",
     );
     console.log(
-      "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0",
+      "\x1b[33m║  If you forget your master password, this key        ║\x1b[0m",
     );
     console.log(
-      "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0",
+      "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0m",
     );
     console.log(
-      "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0",
+      "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0m",
+    );
+    console.log(
+      "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0m",
     );
     console.log("");
 
@@ -161,29 +161,29 @@ async function recoverCommand() {
         keyConfirmed = true;
       } else {
         console.log(
-          "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0",
+          "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0m",
         );
         console.log(
-          "\x1b[33m║           SAVE YOUR NEW RECOVERY KEY                 ║\x1b[0",
+          "\x1b[33m║           SAVE YOUR NEW RECOVERY KEY                 ║\x1b[0m",
         );
         console.log(
-          "\x1b[33m║                                                      ║\x1b[0",
+          "\x1b[33m║                                                      ║\x1b[0m",
         );
-        console.log("\x1b[33m║  " + newRecoveryKey.display + "      ║\x1b[0");
+        console.log("\x1b[33m║  " + newRecoveryKey.display + "      ║\x1b[0m");
         console.log(
-          "\x1b[33m║                                                      ║\x1b[0",
-        );
-        console.log(
-          "\x1b[33m║  If you forget your master password, this key        ║\x1b[0",
+          "\x1b[33m║                                                      ║\x1b[0m",
         );
         console.log(
-          "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0",
+          "\x1b[33m║  If you forget your master password, this key        ║\x1b[0m",
         );
         console.log(
-          "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0",
+          "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0m",
         );
         console.log(
-          "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0",
+          "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0m",
+        );
+        console.log(
+          "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0m",
         );
         console.log("");
       }

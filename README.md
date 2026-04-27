@@ -1,6 +1,6 @@
 # repo-parking
 
-Park and unpark git repos to save disk space. When you park a repository, it removes the local copy but saves everything to your private vault repository. Unpark to restore it on any machine.
+Park and unpark git repos to save disk space, or **park selected files and folders** (`park -f`) into the same private vault. When you park a repository, the tool can remove the local copy after everything is stored in your vault. Unpark to restore on any machine.
 
 **Compatibility:** macOS and Linux only. Node.js v18+ required.
 
@@ -61,15 +61,37 @@ You'll be asked about:
 
 **Safety:** Parking checks ALL local branches for unpushed commits. If any branch has unpushed work, parking is blocked to prevent data loss.
 
+### `parking park -f <name>` (files and folders)
+
+Park **selected files or folders** from any directory into your vault **without** needing a git repository there. Data is encrypted with the same master password / MEK as git repos.
+
+```bash
+parking park -f my-backup
+```
+
+You will be asked for:
+
+- The folder to read from (defaults to the current directory)
+- A checkbox list of files and folders to include
+
+**Limits:** Total size of included files must be **100 MiB or less** (fits normal GitHub vault pushes without Git LFS or chunking).
+
+**After a successful vault push**, you choose whether to **remove those paths from this machine** or **keep local copies**. If you keep copies, the encrypted snapshot still lives in the vault so you can `parking unpark` on another machine.
+
+**Restore:** `parking unpark <name-or-letter>` extracts the archive into a folder named `<name>` under your current directory (same as git unpark naming).
+
 ### `parking list`
 
-Show all parked projects.
+Show parked **repositories** and **files & folders** in two sections.
 
 ```
+Repositories
 Letter  Name                           Remote                               Parked
--------------------------------------------------------------------------------
-A       my-app                         git@github.com:user/repo.git        2 days ago
-B       api-server                     git@github.com:user/api.git         1 week ago
+------------------------------------------------------------------------------------------
+
+Files & folders
+Letter  Name                           Files         Parked
+------------------------------------------------------------------------------------------
 ```
 
 ### `parking status <name or letter>`
@@ -90,11 +112,11 @@ parking unpark my-app
 parking unpark A
 ```
 
-You'll be asked to confirm before running the setup command.
+For git repos you will be asked to confirm before running the setup command. File bundles have no clone step: contents are decrypted and extracted from the vault.
 
 ### `parking forget <name or letter>`
 
-Remove a project from the vault (does NOT delete the remote repo).
+Remove an entry from the vault. For git repos this does **not** delete the code remote. For file bundles it removes the encrypted archive from the vault only.
 
 ```bash
 parking forget my-app
@@ -186,7 +208,7 @@ Project letters (A, B, C...) are permanent identifiers. Once assigned, a letter 
 
 ## Unique Names
 
-Project names must be unique across all parked repos. If you try to park two repos with the same name, you'll be asked to rename one.
+Names must be unique across **all** parked git repos and file bundles. You cannot reuse a name until the previous entry is forgotten.
 
 ---
 
@@ -199,5 +221,6 @@ Project names must be unique across all parked repos. If you try to park two rep
 - HMAC-SHA256 verifier confirms correct password without decrypting data
 - All sensitive data encrypted before storage in vault
 - Vault is a standard git repository
-- Projects stored as individual JSON files in `vault/projects/`
+- Git repos: metadata in `vault/projects/<LETTER>.json` (encrypted `.env` / extras in JSON)
+- File bundles: manifest in `vault/bundles/<LETTER>.json` plus encrypted `vault/bundles/<LETTER>/payload.enc` (tar archive, AES-256-GCM with MEK)
 - Meta information stored in `vault/meta.json`

@@ -48,18 +48,56 @@ async function statusCommand(nameOrLetter) {
   if (!project) {
     console.error("Project not found:", nameOrLetter);
     console.log("");
-    console.log("Run \x1b[36mparking list\x1b[0m to see all parked projects.");
+    console.log("Run \x1b[36mparking list\x1b[0m to see all parked entries.");
     return;
   }
 
+  const isBundle = project.kind === "bundle";
+
   console.log("");
+  console.log("Type:      " + (isBundle ? "Files & folders" : "Git repository"));
   console.log("Letter:    " + project.id);
   console.log("Name:      " + project.name);
+  console.log("Parked at: " + formatDate(project.parked_at));
+
+  if (isBundle) {
+    if (project.bundle_root) {
+      console.log("Source:    " + project.bundle_root + " (path when parked)");
+    }
+    console.log(
+      "Files:     " +
+        (project.file_count != null ? project.file_count : "?") +
+        " file(s) in archive",
+    );
+    if (project.plaintext_bytes != null) {
+      console.log(
+        "Size:      " +
+          Math.round((project.plaintext_bytes / (1024 * 1024)) * 100) / 100 +
+          " MiB (approx. before encrypt)",
+      );
+    }
+    if (project.removed_local === true) {
+      console.log("Local:     selected paths were removed after parking");
+    } else if (project.removed_local === false) {
+      console.log("Local:     copy kept on disk after parking");
+    }
+    if (project.parked_paths && project.parked_paths.length > 0) {
+      console.log("Paths:");
+      for (const p of project.parked_paths) {
+        console.log("  - " + p);
+      }
+    }
+    if (project.notes) {
+      console.log("Notes:     " + project.notes);
+    }
+    console.log("");
+    return;
+  }
+
   console.log("Remote:    " + project.remote);
   if (project.remote_push_url) {
     console.log("Push URL:  " + project.remote_push_url);
   }
-  console.log("Parked at: " + formatDate(project.parked_at));
 
   if (project.parked_branch) {
     console.log("Branch:    " + project.parked_branch);

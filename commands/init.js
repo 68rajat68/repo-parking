@@ -154,10 +154,14 @@ async function initCommand() {
   }
   // For empty repos, HEAD is on unborn branch - we proceed to create files and bootstrap
 
-  // Create projects directory and meta.json if needed
+  // Create projects and bundles directories and meta.json if needed
   const projectsDir = path.join(vaultPath, "projects");
   if (!fs.existsSync(projectsDir)) {
     fs.mkdirSync(projectsDir, { recursive: true });
+  }
+  const bundlesDir = path.join(vaultPath, "bundles");
+  if (!fs.existsSync(bundlesDir)) {
+    fs.mkdirSync(bundlesDir, { recursive: true });
   }
 
   const metaPath = path.join(vaultPath, "meta.json");
@@ -226,29 +230,29 @@ async function initCommand() {
   // Show recovery key and require confirmation
   console.log("");
   console.log(
-    "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0",
+    "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0m",
   );
   console.log(
-    "\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0",
+    "\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0m",
   );
   console.log(
-    "\x1b[33m║                                                      ║\x1b[0",
+    "\x1b[33m║                                                      ║\x1b[0m",
   );
-  console.log("\x1b[33m║  " + recoveryKey.display + "      ║\x1b[0");
+  console.log("\x1b[33m║  " + recoveryKey.display + "      ║\x1b[0m");
   console.log(
-    "\x1b[33m║                                                      ║\x1b[0",
-  );
-  console.log(
-    "\x1b[33m║  If you forget your master password, this key        ║\x1b[0",
+    "\x1b[33m║                                                      ║\x1b[0m",
   );
   console.log(
-    "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0",
+    "\x1b[33m║  If you forget your master password, this key        ║\x1b[0m",
   );
   console.log(
-    "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0",
+    "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0m",
   );
   console.log(
-    "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0",
+    "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0m",
+  );
+  console.log(
+    "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0m",
   );
   console.log("");
 
@@ -265,29 +269,29 @@ async function initCommand() {
       keyConfirmed = true;
     } else {
       console.log(
-        "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0",
+        "\x1b[33m╔══════════════════════════════════════════════════════╗\x1b[0m",
       );
       console.log(
-        "\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0",
+        "\x1b[33m║           SAVE YOUR RECOVERY KEY                     ║\x1b[0m",
       );
       console.log(
-        "\x1b[33m║                                                      ║\x1b[0",
+        "\x1b[33m║                                                      ║\x1b[0m",
       );
       console.log("\x1b[33m║  " + recoveryKey.display + "      ║\x1b[0m");
       console.log(
-        "\x1b[33m║                                                      ║\x1b[0",
+        "\x1b[33m║                                                      ║\x1b[0m",
       );
       console.log(
-        "\x1b[33m║  If you forget your master password, this key        ║\x1b[0",
+        "\x1b[33m║  If you forget your master password, this key        ║\x1b[0m",
       );
       console.log(
-        "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0",
+        "\x1b[33m║  lets you reset it without losing your data.         ║\x1b[0m",
       );
       console.log(
-        "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0",
+        "\x1b[33m║  It will NOT be shown again. Store it safely.        ║\x1b[0m",
       );
       console.log(
-        "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0",
+        "\x1b[33m╚══════════════════════════════════════════════════════╝\x1b[0m",
       );
       console.log("");
     }
