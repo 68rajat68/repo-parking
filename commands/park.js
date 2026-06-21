@@ -29,6 +29,9 @@ const {
   validateFileSizes,
   getNextLetter,
   getGitignoreFiles,
+  getEnvFiles,
+  isEnvFilePath,
+  sortExtraFilePaths,
 } = require("../lib/files");
 const { unwrapMEK, encryptWithMEK } = require("../lib/crypto");
 
@@ -765,11 +768,15 @@ async function askConfigQuestions(repoRoot, existingExtraFiles) {
 }
 
 async function askExtraFiles(repoRoot, existingExtraFiles) {
-  // Step 1: Scan gitignore
+  // Step 1: Scan gitignore and recursive env files
   process.stdout.write(
-    "\nScanning .gitignore for extra files to preserve...\n",
+    "\nScanning .gitignore and env files for extra files to preserve...\n",
   );
-  const { files, warnings } = await getGitignoreFiles(repoRoot);
+  const { files: gitignoreFiles, warnings } = await getGitignoreFiles(repoRoot);
+  const envFiles = await getEnvFiles(repoRoot);
+  const files = sortExtraFilePaths(
+    [...new Set([...gitignoreFiles, ...envFiles])].filter((f) => f !== ".env"),
+  );
 
   // Step 2: If warnings exist, show them
   for (const w of warnings) {
@@ -780,7 +787,7 @@ async function askExtraFiles(repoRoot, existingExtraFiles) {
 
   // Step 3: Build checkbox choices
   const choices = files.map((f) => {
-    const isEnv = f === ".env" || f.startsWith(".env.");
+    const isEnv = isEnvFilePath(f);
     const wasChecked = existingExtraFiles.includes(f);
     return {
       name: f,
@@ -792,7 +799,9 @@ async function askExtraFiles(repoRoot, existingExtraFiles) {
   // Step 4: Handle cases
   if (choices.length === 0) {
     // No gitignored files found on disk
-    console.log("\x1b[90mNo .gitignore'd files found on disk.\x1b[0m");
+    console.log(
+      "\x1b[90mNo .gitignore'd or env-related files found on disk.\x1b[0m",
+    );
     console.log(
       "Enter paths manually (comma-separated) or press Enter to skip:",
     );
@@ -834,7 +843,7 @@ async function askExtraFiles(repoRoot, existingExtraFiles) {
     "\nSelect extra files to preserve (space to toggle, enter to confirm):",
   );
   console.log(
-    "\x1b[90m.env files are pre-selected. Others are unchecked by default.\x1b[0m\n",
+    "\x1b[90m.env-related files are pre-selected. Others are unchecked by default.\x1b[0m\n",
   );
 
   const { selected } = await inquirer.prompt([
@@ -874,7 +883,9 @@ async function askExtraFiles(repoRoot, existingExtraFiles) {
   }
 
   // Step 7: Combine, deduplicate, validate all paths
-  const allPaths = [...new Set([...selected, ...manualAdditions])];
+  const allPaths = [...new Set([...selected, ...manualAdditions])].filter(
+    (p) => p !== ".env",
+  );
 
   const validPaths = [];
   for (const p of allPaths) {
